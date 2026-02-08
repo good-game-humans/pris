@@ -1,0 +1,10 @@
+# Ignore everything
+/*
+
+# Except these folders
+!/code/
+!/setup/
+!/.gitignore
+
+# Ignore macOS metadata
+.DS_Store

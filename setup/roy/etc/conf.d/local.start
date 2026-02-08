@@ -1,0 +1,13 @@
+# /etc/conf.d/local.start:
+# $Header: /home/cvsroot/gentoo-src/rc-scripts/etc/conf.d/local.start,v 1.4 2002/11/18 19:39:22 azarah Exp $
+
+# This is a good place to load any misc.
+# programs on startup ( 1>&2 )
+		
+/home/victor/Apps/throttle-d/throttle-data-d.pl \
+    >>/home/victor/Apps/throttle-d/logs/data.log 2>&1 &
+/home/victor/Apps/throttle-d/throttle-sgnl-d.pl \
+    >>/home/victor/Apps/throttle-d/logs/sgnl.log 2>&1 &
+/home/victor/Apps/throttle-d/throttle-push-d.sh \
+    >>/home/victor/Apps/throttle-d/logs/push.log 2>&1 &
+

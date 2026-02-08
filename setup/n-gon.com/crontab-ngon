@@ -1,0 +1,2 @@
+05 00 * * mon /usr/home/ngon/public_html/pris/stat-pris-registry.pl --cutoff=300 --clean
+
