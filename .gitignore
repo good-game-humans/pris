@@ -8,3 +8,8 @@
 
 # Ignore macOS metadata
 .DS_Store
+
+# Ignore large/regeneratable files in setup
+setup/local/*.qcow2
+setup/local/arch-boot/
+setup/local/*.log
