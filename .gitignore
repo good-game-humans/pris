@@ -13,3 +13,9 @@
 setup/local/*.qcow2
 setup/local/arch-boot/
 setup/local/*.log
+
+# Ignore build artifacts in code
+code/**/node_modules/
+code/**/.zig-cache/
+code/**/zig-out/
+code/**/dist/

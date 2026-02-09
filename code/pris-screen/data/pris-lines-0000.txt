@@ -1,0 +1,5 @@
+[2026-02-08 16:32:06] :: running early hook [udev]
+[2026-02-08 16:32:06] Starting systemd-udevd version 259-2-arch
+[2026-02-08 16:32:06] :: running early hook [archiso_pxe_nbd]
+[2026-02-08 16:32:07] :: running hook [udev]
+[2026-02-08 16:32:07] :: Triggering uevents...
