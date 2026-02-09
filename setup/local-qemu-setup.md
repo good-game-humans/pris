@@ -23,10 +23,10 @@ brew install qemu moreutils p7zip
 
 ### 3. Create disk image for LFS build
 ```bash
-qemu-img create -f qcow2 setup/local/lfs.qcow2 20G
+qemu-img create -f qcow2 setup/local/lfs.qcow2 50G
 ```
 - **Location:** `setup/local/lfs.qcow2`
-- **Size:** 20GB (qcow2 format, grows as needed)
+- **Size:** 50GB (qcow2 format, grows as needed)
 
 ### 4. Extract kernel and initramfs from ISO
 ```bash
@@ -51,7 +51,7 @@ The start script (`setup/local/start-qemu.sh`) uses direct kernel boot:
 
 ```bash
 qemu-system-x86_64 \
-  -m 4G \
+  -m 8G \
   -smp 4 \
   -hda setup/local/lfs.qcow2 \
   -cdrom "tools/Arch Linux/archlinux-x86_64.iso" \
@@ -69,6 +69,38 @@ Key flags:
 - `-serial stdio`: Connect serial to terminal (interactive)
 - `-display none`: No graphical display needed
 - `ts | tee`: Timestamps and logs all output
+
+## Prepare LFS Build
+
+# Set up ssh access
+Set up the root password for ssh access:
+
+```passwd```
+
+Can now ssh from another terminal using:
+
+```ssh -p 2222 root@localhost```
+
+# Enlarge space available for building packages
+```mount -o remount,size=2G /run/archiso/cowspace```
+
+# Install some base packages
+```pacman -Sy
+pacman -S base-devel
+```
+
+# Create and mount partitions
+Use `fdisk` to create 2 partitions, one for the LFS build, the other for swap.  Should look something like this when done:
+
+```Device     Boot    Start       End  Sectors Size Id Type
+/dev/sda1           2048  83888127 83886080  40G 83 Linux
+/dev/sda2       83888128 104857599 20969472  10G 82 Linux swap / Solaris
+```
+
+```mkfs.ext4 /dev/sda1
+mkswap /dev/sda2
+mount /dev/sda1 /mnt
+```
 
 ## Directory Structure
 ```
