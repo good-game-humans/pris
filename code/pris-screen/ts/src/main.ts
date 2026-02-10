@@ -21,6 +21,11 @@ interface PrisScreenWasm {
 let wasm: PrisScreenWasm | null = null;
 let canvas: HTMLCanvasElement | null = null;
 let ctx: CanvasRenderingContext2D | null = null;
+let imageData: ImageData | null = null;
+let wasmPixels: Uint8ClampedArray | null = null;
+let wasmMemory: Uint8Array | null = null;
+let linePtr = 0;
+const textEncoder = new TextEncoder();
 let currentChunk = 0;
 let cursorVisible = true;
 let lastCursorToggle = 0;
@@ -47,21 +52,13 @@ async function fetchChunk(num: number): Promise<string | null> {
 }
 
 function addLineToWasm(line: string): void {
-  if (!wasm) return;
+  if (!wasm || !wasmMemory) return;
 
   // Encode string to UTF-8
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(line);
+  const bytes = textEncoder.encode(line);
 
-  // Allocate space in WASM memory
-  // For simplicity, we'll write to a fixed location at the start of memory
-  // (after the pixel buffer)
-  const bufferEnd = wasm.getBufferSize();
-  const linePtr = bufferEnd + 1024; // Some offset after pixel buffer
-
-  // Write bytes to WASM memory
-  const mem = new Uint8Array(wasm.memory.buffer);
-  mem.set(bytes, linePtr);
+  // Write bytes to WASM memory at pre-calculated offset
+  wasmMemory.set(bytes, linePtr);
 
   // Call WASM to add line
   wasm.addLine(linePtr, bytes.length);
@@ -90,7 +87,7 @@ async function pollChunks(): Promise<void> {
 }
 
 function renderFrame(): void {
-  if (!wasm || !ctx || !canvas) return;
+  if (!wasm || !ctx || !imageData || !wasmPixels) return;
 
   const now = performance.now();
 
@@ -104,15 +101,8 @@ function renderFrame(): void {
   // Render to pixel buffer
   wasm.render();
 
-  // Get pixel data from WASM
-  const ptr = wasm.getPixelBuffer();
-  const width = wasm.getScreenWidth();
-  const height = wasm.getScreenHeight();
-  const size = width * height * 4;
-
-  // Create ImageData from WASM memory
-  const pixels = new Uint8ClampedArray(wasm.memory.buffer, ptr, size);
-  const imageData = new ImageData(pixels, width, height);
+  // Copy from WASM memory to ImageData
+  imageData.data.set(wasmPixels);
 
   // Draw to canvas
   ctx.putImageData(imageData, 0, 0);
@@ -139,6 +129,16 @@ async function init(): Promise<void> {
     console.error('Failed to get canvas context');
     return;
   }
+
+  // Create reusable ImageData and WASM memory views
+  const width = wasm.getScreenWidth();
+  const height = wasm.getScreenHeight();
+  const ptr = wasm.getPixelBuffer();
+  const size = width * height * 4;
+  wasmPixels = new Uint8ClampedArray(wasm.memory.buffer, ptr, size);
+  wasmMemory = new Uint8Array(wasm.memory.buffer);
+  linePtr = wasm.getBufferSize() + 1024; // Fixed offset after pixel buffer
+  imageData = ctx.createImageData(width, height);
 
   // Start polling for chunks
   pollChunks();
