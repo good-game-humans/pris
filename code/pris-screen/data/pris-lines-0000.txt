@@ -1,5 +1,16 @@
-[2026-02-08 16:32:06] :: running early hook [udev]
-[2026-02-08 16:32:06] Starting systemd-udevd version 259-2-arch
-[2026-02-08 16:32:06] :: running early hook [archiso_pxe_nbd]
-[2026-02-08 16:32:07] :: running hook [udev]
-[2026-02-08 16:32:07] :: Triggering uevents...
+-=pr 1707500000.000000 is=-
+:: running early hook [udev]
+-=pr 1707500000.500000 is=-
+Starting systemd-udevd version 259-2-arch
+-=pr 1707500001.000000 is=-
+:: running early hook [archiso_pxe_nbd]
+-=pr 1707500001.500000 is=-
+:: running hook [udev]
+-=pr 1707500002.000000 is=-
+:: Triggering uevents...
+-=pr 1707500003.000000 is=-
+This is a longer line that should wrap to multiple screen lines because it exceeds 80 characters in length and demonstrates the wrapping functionality
+-=pr 1707500004.000000 is=-
+:: running hook [archiso]
+-=pr 1707500005.000000 is=-
+:: Mounting '/dev/disk/by-label/ARCH_202602' to '/run/archiso/bootmnt'

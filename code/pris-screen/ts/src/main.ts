@@ -1,20 +1,29 @@
 // Configuration
 const DATA_PATH = './data';
-const POLL_INTERVAL_MS = 1000;
-const CURSOR_BLINK_MS = 500;
-const FRAME_INTERVAL_MS = 100;
+const POLL_INTERVAL_MS = 100;
+
+// Manifest
+interface Manifest {
+  mode: 'realtime' | 'replay';
+  startTime: number;
+  duration?: number;
+}
 
 // WASM module interface
 interface PrisScreenWasm {
   memory: WebAssembly.Memory;
   init(): void;
-  addLine(ptr: number, len: number): void;
-  setCursor(visible: boolean): void;
-  render(): void;
+  initTiming(startMs: bigint, durationMs: bigint, nowMs: bigint): void;
+  getWriteBufferPtr(): number;
+  getWriteBufferIndex(): number;
+  markBufferReady(index: number, len: number): void;
+  needsBuffer(): boolean;
+  processFrame(nowMs: bigint): void;
   getPixelBuffer(): number;
   getBufferSize(): number;
   getScreenWidth(): number;
   getScreenHeight(): number;
+  getMaxChunkSize(): number;
   getVersion(): number;
 }
 
@@ -24,11 +33,9 @@ let ctx: CanvasRenderingContext2D | null = null;
 let imageData: ImageData | null = null;
 let wasmPixels: Uint8ClampedArray | null = null;
 let wasmMemory: Uint8Array | null = null;
-let linePtr = 0;
-const textEncoder = new TextEncoder();
 let currentChunk = 0;
-let cursorVisible = true;
-let lastCursorToggle = 0;
+let fetchingChunk = false;
+let reachedEnd = false;
 
 async function loadWasm(): Promise<PrisScreenWasm> {
   const response = await fetch('./wasm/zig-out/bin/pris-screen.wasm');
@@ -41,65 +48,55 @@ function chunkFilename(num: number): string {
   return `${DATA_PATH}/pris-lines-${num.toString().padStart(4, '0')}.txt`;
 }
 
-async function fetchChunk(num: number): Promise<string | null> {
+async function fetchAndFillBuffer(): Promise<void> {
+  if (!wasm || fetchingChunk || reachedEnd) return;
+  if (!wasm.needsBuffer()) return;
+
+  fetchingChunk = true;
+
   try {
-    const response = await fetch(chunkFilename(num));
-    if (!response.ok) return null;
-    return await response.text();
-  } catch {
-    return null;
-  }
-}
-
-function addLineToWasm(line: string): void {
-  if (!wasm || !wasmMemory) return;
-
-  // Encode string to UTF-8
-  const bytes = textEncoder.encode(line);
-
-  // Write bytes to WASM memory at pre-calculated offset
-  wasmMemory.set(bytes, linePtr);
-
-  // Call WASM to add line
-  wasm.addLine(linePtr, bytes.length);
-}
-
-function processChunk(text: string): void {
-  const lines = text.split('\n');
-  for (const line of lines) {
-    if (line.trim() !== '') {
-      addLineToWasm(line);
+    const response = await fetch(chunkFilename(currentChunk));
+    if (!response.ok) {
+      // No more chunks available yet
+      fetchingChunk = false;
+      return;
     }
-  }
-}
 
-async function pollChunks(): Promise<void> {
-  const text = await fetchChunk(currentChunk);
-  if (text !== null) {
-    processChunk(text);
+    const text = await response.text();
+    const bytes = new TextEncoder().encode(text);
+
+    // Check for end signal
+    if (text.includes('-=END=-')) {
+      reachedEnd = true;
+    }
+
+    // Get buffer from WASM and write to it
+    const bufferIndex = wasm.getWriteBufferIndex();
+    const bufferPtr = wasm.getWriteBufferPtr();
+    const maxSize = wasm.getMaxChunkSize();
+
+    const writeLen = Math.min(bytes.length, maxSize);
+    wasmMemory!.set(bytes.subarray(0, writeLen), bufferPtr);
+    wasm.markBufferReady(bufferIndex, writeLen);
+
     currentChunk++;
-    // Check for next chunk immediately
-    setTimeout(pollChunks, 50);
-  } else {
-    // Wait and try again
-    setTimeout(pollChunks, POLL_INTERVAL_MS);
+  } catch {
+    // Fetch failed, will retry
   }
+
+  fetchingChunk = false;
 }
 
 function renderFrame(): void {
   if (!wasm || !ctx || !imageData || !wasmPixels) return;
 
-  const now = performance.now();
-
-  // Toggle cursor
-  if (now - lastCursorToggle > CURSOR_BLINK_MS) {
-    cursorVisible = !cursorVisible;
-    wasm.setCursor(cursorVisible);
-    lastCursorToggle = now;
+  // Fill buffers if needed
+  if (wasm.needsBuffer() && !fetchingChunk) {
+    fetchAndFillBuffer();
   }
 
-  // Render to pixel buffer
-  wasm.render();
+  // Let WASM process lines and render
+  wasm.processFrame(BigInt(Date.now()));
 
   // Copy from WASM memory to ImageData
   imageData.data.set(wasmPixels);
@@ -119,6 +116,24 @@ async function init(): Promise<void> {
   // Initialize WASM
   wasm.init();
 
+  // Fetch manifest
+  let manifest: Manifest;
+  try {
+    manifest = await fetch(`${DATA_PATH}/manifest.json`).then(r => r.json());
+    console.log('Manifest loaded:', manifest);
+  } catch {
+    // Default to realtime mode with current time as start
+    manifest = { mode: 'realtime', startTime: Date.now() };
+    console.log('No manifest, using realtime mode');
+  }
+
+  // Initialize timing
+  wasm.initTiming(
+    BigInt(manifest.startTime),
+    BigInt(manifest.duration ?? 0),
+    BigInt(Date.now())
+  );
+
   // Set up canvas
   canvas = document.getElementById('terminal') as HTMLCanvasElement;
   canvas.width = wasm.getScreenWidth();
@@ -137,14 +152,9 @@ async function init(): Promise<void> {
   const size = width * height * 4;
   wasmPixels = new Uint8ClampedArray(wasm.memory.buffer, ptr, size);
   wasmMemory = new Uint8Array(wasm.memory.buffer);
-  linePtr = wasm.getBufferSize() + 1024; // Fixed offset after pixel buffer
   imageData = ctx.createImageData(width, height);
 
-  // Start polling for chunks
-  pollChunks();
-
   // Start render loop
-  lastCursorToggle = performance.now();
   requestAnimationFrame(renderFrame);
 }
 
