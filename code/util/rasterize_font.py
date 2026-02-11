@@ -15,7 +15,7 @@ except ImportError:
 
 # Configuration
 FONT_PATH = Path(__file__).parent.parent.parent / "fonts/Fira_Code_v6.2/ttf/FiraCode-Medium.ttf"
-FONT_SIZE = 11
+FONT_SIZE = 16
 CHARS = "".join(chr(c) for c in range(32, 127))  # ASCII 32-126
 
 def main():
@@ -42,7 +42,7 @@ def main():
     # Use fixed cell size for monospace font
     # Add padding for descenders and ascenders
     cell_width = max_width + 2
-    cell_height = FONT_SIZE + 4  # Extra space for descenders
+    cell_height = max_height + 4  # Use measured height plus padding
 
     print(f"// Font: Fira Code Regular {FONT_SIZE}pt")
     print(f"// Cell size: {cell_width}x{cell_height}")
