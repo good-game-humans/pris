@@ -71,7 +71,7 @@ EOF
 
 exec qemu-system-x86_64 \
   -enable-kvm \
-  -m 8G \
+  -m 2G \
   -smp 4 \
   -hda "$PRIS_DIR/setup/aws/lfs.qcow2" \
   -cdrom "$PRIS_DIR/tools/archlinux-x86_64.iso" \
@@ -81,13 +81,23 @@ exec qemu-system-x86_64 \
   -nic user,hostfwd=tcp::2222-:22 \
   -serial stdio \
   -display none \
-  2>&1 | ts -- '-=pr %.s is=-' | sed 's/is=- /is=-\
-/' | tee "$LOG_FILE"
+  2>&1 | ts '[pris %.s] ' | tee "$LOG_FILE"
 SCRIPT
 chmod +x ~/pris/setup/aws/start-qemu.sh
 ```
 
-Key difference from local setup: `-enable-kvm` for hardware acceleration (native x86_64).
+Key flags:
+- `-m 2G`: 2GB RAM (limited by EC2 instance memory)
+- `-smp 4`: 4 virtual CPUs
+- `-kernel` / `-initrd`: Direct kernel boot (bypasses ISO bootloader)
+- `-append "console=ttyS0,115200"`: Serial console output
+- `-nic user,hostfwd=tcp::2222-:22`: User networking with SSH port forward
+- `-serial stdio`: Connect serial to terminal
+- `-display none`: No graphical display needed
+- `ts | tee`: Timestamps and logs all output
+
+**Note:** No `-enable-kvm` because standard EC2 instances don't support nested virtualization.
+
 
 ### 7. Boot the VM
 ```bash
@@ -135,8 +145,7 @@ mount /dev/sda1 /mnt
 
 The build output is logged with timestamps in the format:
 ```
--=pr SECONDS.MICROSECONDS is=-
-line of output
+[pris SECONDS.MICROSECONDS] line of output
 ```
 
 To chunk the log for pris-screen:
@@ -161,6 +170,4 @@ To chunk the log for pris-screen:
 ```
 
 ## Notes
-- Using `-enable-kvm` for native x86_64 hardware acceleration
-- Much faster than local Mac setup (no emulation)
 - Same timestamp format as local setup for pris-screen compatibility

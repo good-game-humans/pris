@@ -60,7 +60,7 @@ qemu-system-x86_64 \
   -append "console=ttyS0,115200 archisobasedir=arch archisolabel=ARCH_202602" \
   -serial stdio \
   -display none \
-  2>&1 | ts '[%Y-%m-%d %H:%M:%.S]' | tee setup/local/build.log
+  2>&1 | ts '[pris %.s] ' | tee setup/local/build.log
 ```
 
 Key flags:

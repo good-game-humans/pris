@@ -1,5 +1,7 @@
 #!/bin/bash
 # Start QEMU VM for LFS build - direct kernel boot with serial console
+# Note: No -enable-kvm because standard EC2 instances don't support nested virtualization
+# Use .metal instance types for KVM support
 
 PRIS_DIR="$HOME/pris"
 BOOT_DIR="$PRIS_DIR/setup/aws/arch-boot"
@@ -16,8 +18,7 @@ Login: root (no password)
 EOF
 
 exec qemu-system-x86_64 \
-  -enable-kvm \
-  -m 8G \
+  -m 2G \
   -smp 4 \
   -hda "$PRIS_DIR/setup/aws/lfs.qcow2" \
   -cdrom "$PRIS_DIR/tools/archlinux-x86_64.iso" \
@@ -27,5 +28,4 @@ exec qemu-system-x86_64 \
   -nic user,hostfwd=tcp::2222-:22 \
   -serial stdio \
   -display none \
-  2>&1 | ts -- '-=pr %.s is=-' | sed 's/is=- /is=-\
-/' | tee "$LOG_FILE"
+  2>&1 | ts '[pris %.s] ' | tee "$LOG_FILE"
