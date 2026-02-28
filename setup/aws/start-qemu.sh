@@ -1,19 +1,17 @@
 #!/bin/bash
-# Start QEMU VM for LFS build - direct kernel boot with serial console
+# Start QEMU VM for LFS build - boots installed Arch Linux from qcow2
 # Note: No -enable-kvm because standard EC2 instances don't support nested virtualization
 # Use .metal instance types for KVM support
 
 PRIS_DIR="$HOME/pris"
-BOOT_DIR="$PRIS_DIR/setup/aws/arch-boot"
 LOG_FILE="$PRIS_DIR/setup/aws/build.log"
 
-# Update ARCH_YYYYMM to match downloaded ISO label
-ARCH_LABEL="ARCH_202602"
+BOOT_DIR="$PRIS_DIR/setup/aws/arch-boot"
 
 cat << 'EOF'
-Starting QEMU with direct kernel boot...
+Starting QEMU with installed Arch Linux kernel...
 Serial console enabled - output will appear below.
-Login: root (no password)
+Login: root (password set during install)
 ---
 EOF
 
@@ -21,10 +19,9 @@ exec qemu-system-x86_64 \
   -m 2G \
   -smp 4 \
   -hda "$PRIS_DIR/setup/aws/lfs.qcow2" \
-  -cdrom "$PRIS_DIR/tools/archlinux-x86_64.iso" \
   -kernel "$BOOT_DIR/vmlinuz-linux" \
   -initrd "$BOOT_DIR/initramfs-linux.img" \
-  -append "console=ttyS0,115200 archisobasedir=arch archisolabel=$ARCH_LABEL" \
+  -append "root=/dev/sda1 rw console=ttyS0,115200" \
   -nic user,hostfwd=tcp::2222-:22 \
   -serial stdio \
   -display none \

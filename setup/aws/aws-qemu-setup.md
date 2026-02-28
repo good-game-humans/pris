@@ -3,143 +3,121 @@
 ## Overview
 QEMU virtualized environment for building Linux From Scratch (LFS) on AWS EC2.
 - Host: Ubuntu x86_64 EC2 instance
-- Guest: Arch Linux (bootstrap environment)
+- Guest: Arch Linux (pre-installed, bootstrapped locally)
 - Output: Timestamped logs for pris-screen display
+
+**Note:** Arch Linux is bootstrapped locally (not on EC2) because EC2 instances lack
+sufficient RAM and KVM support to run `pacstrap` reliably. The completed qcow2 image
+is then transferred to EC2.
 
 ## Setup Steps
 
 ### 1. Install QEMU and dependencies
 ```bash
 sudo apt update
-sudo apt install -y qemu-system-x86 qemu-utils moreutils p7zip-full
+sudo apt install -y qemu-system-x86 qemu-utils moreutils
 ```
 - **qemu-system-x86**: x86_64 emulator (runs native on x86_64 host)
-- **qemu-utils**: provides qemu-img
+- **qemu-utils**: provides `qemu-img` and `qemu-nbd`
 - **moreutils**: provides `ts` for timestamps
-- **p7zip-full**: for extracting kernel from ISO
 
 ### 2. Create working directory
 ```bash
 mkdir -p ~/pris/setup/aws/arch-boot
-mkdir -p ~/pris/tools
 cd ~/pris
 ```
 
-### 3. Download Arch Linux ISO
+### 3. Bootstrap Arch Linux locally
+
+Arch Linux is installed onto the qcow2 image on the local Mac (8GB RAM, 50GB disk).
+See `setup/local-qemu-setup.md` for the full local bootstrap process. Summary:
+
+- Boot local QEMU with Arch live ISO
+- Partition `/dev/sda`: 41G ext4 (`/dev/sda1`) + 9G swap (`/dev/sda2`)
+- `pacstrap /mnt base linux linux-firmware grub openssh base-devel wget nano`
+- `genfstab`, `arch-chroot`, configure locale/hostname/sshd/GRUB
+- `grub-install --target=i386-pc /dev/sda && grub-mkconfig`
+- Power off
+
+### 4. Compress and transfer the qcow2
+
+On the local Mac, compress the image (reduces ~50GB to ~2-5GB):
 ```bash
-curl -L -o ~/pris/tools/archlinux-x86_64.iso \
-  https://mirrors.edge.kernel.org/archlinux/iso/latest/archlinux-x86_64.iso
+qemu-img convert -c -O qcow2 \
+  setup/local/lfs.qcow2 \
+  setup/local/lfs-compressed.qcow2
 ```
 
-### 4. Create disk image for LFS build
+Transfer to EC2:
 ```bash
-qemu-img create -f qcow2 ~/pris/setup/aws/lfs.qcow2 50G
+scp -i ~/.ssh/your-key.pem \
+  setup/local/lfs-compressed.qcow2 \
+  ubuntu@<EC2-IP>:~/pris/setup/aws/lfs.qcow2
 ```
 
-### 5. Extract kernel and initramfs from ISO
+### 5. Extract kernel and initramfs from installed qcow2
+
+GRUB inside the qcow2 outputs to VGA only, which is not visible with `-display none`.
+Instead, boot the installed kernel directly by extracting it via `qemu-nbd`:
+
 ```bash
-7z x -o/tmp/archiso ~/pris/tools/archlinux-x86_64.iso arch/boot/x86_64/vmlinuz-linux arch/boot/x86_64/initramfs-linux.img -y
-cp /tmp/archiso/arch/boot/x86_64/vmlinuz-linux ~/pris/setup/aws/arch-boot/
-cp /tmp/archiso/arch/boot/x86_64/initramfs-linux.img ~/pris/setup/aws/arch-boot/
+sudo modprobe nbd max_part=8
+sudo qemu-nbd -c /dev/nbd0 ~/pris/setup/aws/lfs.qcow2
+sleep 2
+sudo mkdir -p /mnt/lfs
+sudo mount /dev/nbd0p1 /mnt/lfs
+sudo cp /mnt/lfs/boot/vmlinuz-linux ~/pris/setup/aws/arch-boot/
+sudo cp /mnt/lfs/boot/initramfs-linux.img ~/pris/setup/aws/arch-boot/
+sudo umount /mnt/lfs
+sudo qemu-nbd -d /dev/nbd0
 ```
 
-Get the ISO label for boot parameters:
-```bash
-7z l ~/pris/tools/archlinux-x86_64.iso | grep -i label
-# Or check the ISO filename for date (e.g., ARCH_202602)
-```
-
-### 6. Create start script
-```bash
-cat > ~/pris/setup/aws/start-qemu.sh << 'SCRIPT'
-#!/bin/bash
-# Start QEMU VM for LFS build - direct kernel boot with serial console
-
-PRIS_DIR="$HOME/pris"
-BOOT_DIR="$PRIS_DIR/setup/aws/arch-boot"
-LOG_FILE="$PRIS_DIR/setup/aws/build.log"
-
-# Update ARCH_YYYYMM to match downloaded ISO label
-ARCH_LABEL="ARCH_202602"
-
-cat << 'EOF'
-Starting QEMU with direct kernel boot...
-Serial console enabled - output will appear below.
-Login: root (no password)
----
-EOF
-
-exec qemu-system-x86_64 \
-  -enable-kvm \
-  -m 2G \
-  -smp 4 \
-  -hda "$PRIS_DIR/setup/aws/lfs.qcow2" \
-  -cdrom "$PRIS_DIR/tools/archlinux-x86_64.iso" \
-  -kernel "$BOOT_DIR/vmlinuz-linux" \
-  -initrd "$BOOT_DIR/initramfs-linux.img" \
-  -append "console=ttyS0,115200 archisobasedir=arch archisolabel=$ARCH_LABEL" \
-  -nic user,hostfwd=tcp::2222-:22 \
-  -serial stdio \
-  -display none \
-  2>&1 | ts '[pris %.s] ' | tee "$LOG_FILE"
-SCRIPT
-chmod +x ~/pris/setup/aws/start-qemu.sh
-```
-
-Key flags:
-- `-m 2G`: 2GB RAM (limited by EC2 instance memory)
-- `-smp 4`: 4 virtual CPUs
-- `-kernel` / `-initrd`: Direct kernel boot (bypasses ISO bootloader)
-- `-append "console=ttyS0,115200"`: Serial console output
-- `-nic user,hostfwd=tcp::2222-:22`: User networking with SSH port forward
-- `-serial stdio`: Connect serial to terminal
-- `-display none`: No graphical display needed
-- `ts | tee`: Timestamps and logs all output
-
-**Note:** No `-enable-kvm` because standard EC2 instances don't support nested virtualization.
-
-
-### 7. Boot the VM
+### 6. Boot the VM
 ```bash
 ~/pris/setup/aws/start-qemu.sh
 ```
 
-Login: `root` (no password)
+The start script boots the installed kernel directly with `root=/dev/sda1 console=ttyS0`,
+bypassing GRUB. Boot messages appear immediately on the serial console.
 
-## Prepare LFS Build Environment
+Login: `root` (password set during local bootstrap)
 
-### Set up SSH access
-```bash
-passwd
-```
+### 7. Set up SSH access
 
-SSH from another terminal:
+SSH from another terminal on EC2:
 ```bash
 ssh -p 2222 root@localhost
 ```
 
-### Enlarge cowspace for package building
+(sshd is enabled and starts automatically at boot)
+
+## Start Script
+
+The start script (`setup/aws/start-qemu.sh`) uses direct kernel boot:
+
 ```bash
-mount -o remount,size=2G /run/archiso/cowspace
+qemu-system-x86_64 \
+  -m 2G \
+  -smp 4 \
+  -hda "$PRIS_DIR/setup/aws/lfs.qcow2" \
+  -kernel "$BOOT_DIR/vmlinuz-linux" \
+  -initrd "$BOOT_DIR/initramfs-linux.img" \
+  -append "root=/dev/sda1 rw console=ttyS0,115200" \
+  -nic user,hostfwd=tcp::2222-:22 \
+  -serial stdio \
+  -display none \
+  2>&1 | ts '[pris %.s] ' | tee "$LOG_FILE"
 ```
 
-### Install base packages
-```bash
-pacman -Sy
-pacman -S base-devel
-```
-
-### Create and mount partitions
-```bash
-fdisk /dev/sda
-# Create partitions:
-# /dev/sda1 - 40G Linux (type 83)
-# /dev/sda2 - 10G swap (type 82)
-
-mkfs.ext4 /dev/sda1
-mkswap /dev/sda2
-mount /dev/sda1 /mnt
-```
+Key flags:
+- `-kernel` / `-initrd`: Boot installed kernel directly (bypasses GRUB, enables serial console)
+- `-append "root=/dev/sda1 rw console=ttyS0,115200"`: Mount installed root, serial output
+- `-m 2G`: 2GB RAM (limited by EC2 instance memory)
+- `-smp 4`: 4 virtual CPUs
+- `-nic user,hostfwd=tcp::2222-:22`: SSH port forward
+- `-serial stdio`: Connect serial to terminal
+- `-display none`: No graphical display needed
+- No `-enable-kvm`: standard EC2 instances don't support nested virtualization
 
 ## Output Capture for pris-screen
 
@@ -159,15 +137,16 @@ To chunk the log for pris-screen:
 ├── setup/
 │   └── aws/
 │       ├── arch-boot/
-│       │   ├── vmlinuz-linux
-│       │   └── initramfs-linux.img
-│       ├── lfs.qcow2
-│       ├── start-qemu.sh
-│       ├── build.log
-│       └── aws-qemu-setup.md
-└── tools/
-    └── archlinux-x86_64.iso
+│       │   ├── vmlinuz-linux       # Extracted from installed qcow2
+│       │   └── initramfs-linux.img # Extracted from installed qcow2
+│       ├── lfs.qcow2               # Installed Arch Linux (compressed qcow2)
+│       ├── start-qemu.sh           # Boot script
+│       ├── build.log               # Timestamped output log
+│       └── aws-qemu-setup.md       # This file
 ```
 
 ## Notes
-- Same timestamp format as local setup for pris-screen compatibility
+- EC2 root volume is 8GB — keep it clean, the qcow2 is the main storage
+- qcow2 compression is transparent to QEMU; no decompression needed before use
+- If the installed kernel is updated, re-extract vmlinuz-linux and initramfs-linux.img
+- Use .metal EC2 instance types if KVM support is needed (faster emulation)
