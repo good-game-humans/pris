@@ -30,12 +30,14 @@ cd ~/pris
 ### 3. Bootstrap Arch Linux locally
 
 Arch Linux is installed onto the qcow2 image on the local Mac (8GB RAM, 50GB disk).
-See `setup/local-qemu-setup.md` for the full local bootstrap process. Summary:
+See `setup/local/local-qemu-setup.md` for the full local bootstrap process. Summary:
 
 - Boot local QEMU with Arch live ISO
 - Partition `/dev/sda`: 41G ext4 (`/dev/sda1`) + 9G swap (`/dev/sda2`)
-- `pacstrap /mnt base linux linux-firmware grub openssh base-devel wget nano`
+- `pacstrap /mnt base linux linux-firmware grub openssh base-devel wget nano python`
 - `genfstab`, `arch-chroot`, configure locale/hostname/sshd/GRUB
+- Passwordless root: `passwd -d root`, permit empty passwords in sshd_config
+- Serial console autologin via systemd getty override
 - `grub-install --target=i386-pc /dev/sda && grub-mkconfig`
 - Power off
 
@@ -80,7 +82,7 @@ sudo qemu-nbd -d /dev/nbd0
 The start script boots the installed kernel directly with `root=/dev/sda1 console=ttyS0`,
 bypassing GRUB. Boot messages appear immediately on the serial console.
 
-Login: `root` (password set during local bootstrap)
+Login: automatic (autologin configured on ttyS0, no password required)
 
 ### 7. Set up SSH access
 

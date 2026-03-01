@@ -49,14 +49,9 @@ This enables direct kernel boot with serial console (no VNC required).
 
 Wait ~2 minutes for the Arch live environment to boot.
 
-### 6. Set up SSH access (in QEMU serial console)
+### 6. Set up SSH access
 
-Set a root password:
-```bash
-passwd
-```
-
-SSH in from a second terminal:
+The live ISO has no root password and sshd runs automatically. SSH in from a second terminal:
 ```bash
 ssh -p 2222 -o StrictHostKeyChecking=no root@localhost
 ```
@@ -95,7 +90,7 @@ Device      Boot    Start       End  Sectors Size Type
 ### 9. Bootstrap Arch Linux with pacstrap (via SSH)
 ```bash
 pacman -Sy
-pacstrap /mnt base linux linux-firmware grub openssh base-devel wget nano
+pacstrap /mnt base linux linux-firmware grub openssh base-devel wget nano python
 ```
 
 This takes several minutes.
@@ -111,8 +106,16 @@ Inside the chroot:
 ln -sf /usr/share/zoneinfo/UTC /etc/localtime
 echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen
 echo "LANG=en_US.UTF-8" > /etc/locale.conf
-echo "lfs-builder" > /etc/hostname
-passwd
+echo "pris" > /etc/hostname
+passwd -d root
+sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/' /etc/ssh/sshd_config
+sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
+cat > /etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf << 'EOF'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear %I $TERM
+EOF
 systemctl enable sshd
 grub-install --target=i386-pc /dev/sda
 grub-mkconfig -o /boot/grub/grub.cfg
