@@ -51,7 +51,10 @@ Wait ~2 minutes for the Arch live environment to boot.
 
 ### 6. Set up SSH access
 
-The live ISO has no root password and sshd runs automatically. SSH in from a second terminal:
+The live ISO auto-starts sshd. Set a root password, then SSH in from a second terminal:
+```bash
+passwd
+```
 ```bash
 ssh -p 2222 -o StrictHostKeyChecking=no root@localhost
 ```
@@ -71,8 +74,8 @@ df -h /run/archiso/cowspace
 ### 8. Partition and format the disk (via SSH)
 ```bash
 parted /dev/sda --script mklabel msdos
-parted /dev/sda --script mkpart primary ext4 1MiB 41GiB
-parted /dev/sda --script mkpart primary linux-swap 41GiB 100%
+parted /dev/sda --script mkpart primary ext4 1MiB 45GiB
+parted /dev/sda --script mkpart primary linux-swap 45GiB 100%
 parted /dev/sda --script set 1 boot on
 mkfs.ext4 /dev/sda1
 mkswap /dev/sda2
@@ -82,9 +85,9 @@ mount /dev/sda1 /mnt
 
 Resulting layout:
 ```
-Device      Boot    Start       End  Sectors Size Type
-/dev/sda1   *        2048  85983231 85981184  41G Linux
-/dev/sda2        85983232 104857599 18874368   9G Linux swap
+Device      Boot    Start        End   Sectors Size Type
+/dev/sda1   *        2048  94371839  94369792  45G Linux
+/dev/sda2        94371840 104857599  10485760   5G Linux swap
 ```
 
 ### 9. Bootstrap Arch Linux with pacstrap (via SSH)
@@ -110,6 +113,15 @@ echo "pris" > /etc/hostname
 passwd -d root
 sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/' /etc/ssh/sshd_config
 sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+echo "UseDNS no" >> /etc/ssh/sshd_config
+cat > /etc/systemd/network/20-wired.network << 'EOF'
+[Match]
+Name=en*
+
+[Network]
+DHCP=yes
+EOF
+systemctl enable systemd-networkd
 mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
 cat > /etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf << 'EOF'
 [Service]

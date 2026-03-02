@@ -36,7 +36,8 @@ See `setup/local/local-qemu-setup.md` for the full local bootstrap process. Summ
 - Partition `/dev/sda`: 41G ext4 (`/dev/sda1`) + 9G swap (`/dev/sda2`)
 - `pacstrap /mnt base linux linux-firmware grub openssh base-devel wget nano python`
 - `genfstab`, `arch-chroot`, configure locale/hostname/sshd/GRUB
-- Passwordless root: `passwd -d root`, permit empty passwords in sshd_config
+- Passwordless root: `passwd -d root`, permit empty passwords in sshd_config, `UseDNS no`
+- Network: systemd-networkd with DHCP enabled for `en*` interface
 - Serial console autologin via systemd getty override
 - `grub-install --target=i386-pc /dev/sda && grub-mkconfig`
 - Power off
