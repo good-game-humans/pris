@@ -13,11 +13,23 @@ pub const TEXT_Y: u32 = 8;
 pub const SCREEN_W: u32 = TEXT_X * 2 + CHAR_W * N_COLS;
 pub const SCREEN_H: u32 = TEXT_Y * 2 + LINE_H * N_ROWS;
 
-// Colors (RGB format)
+// Color palette
+const Color = enum(u8) {
+    default = 0,
+    bold    = 1,
+    red     = 2,
+    green   = 3,
+    arch    = 4,
+};
+const N_COLORS = @typeInfo(Color).@"enum".fields.len;
+
+// Bright (age=0) and normal (fully aged) RGB values per palette entry
+const color_bright: [N_COLORS]u32 = .{ 0xBBFF82, 0xFFFFFF, 0xFF5555, 0x55FF55, 0x1793D1 };
+const color_normal: [N_COLORS]u32 = .{ 0xC0C0C0, 0xC0C0C0, 0x803030, 0x308030, 0x0F5A8A };
+
+// Other colors (RGB format)
 pub const SCRN_RGB: u32 = 0x2B4D59;
 pub const BORDER_RGB: u32 = 0x3A5C61;
-pub const TEXT_RGB: u32 = 0xC0C0C0;
-pub const BRIGHT_RGB: u32 = 0xBBFF82;
 pub const CURSOR_RGB: u32 = 0xFF0000;
 
 pub const N_FADE_STEPS: u32 = 25;
@@ -50,12 +62,16 @@ const CURSOR_BLINK_MS: u64 = 500;
 // Pixel buffer (RGBA format for canvas)
 var pixels: [SCREEN_W * SCREEN_H]u32 = undefined;
 
-// Fade color table
-var fade_colors: [N_FADE_STEPS]u32 = undefined;
+// Per-color fade tables: [Color][fade_step] -> RGB
+var fade_colors: [N_COLORS][N_FADE_STEPS]u32 = undefined;
 
-// Screen state: lines of text with ages
+// Set when an unrecognised true-color RGB is encountered during parsing
+var unknown_color_encountered: bool = false;
+
+// Screen state: lines of text with per-character color and ages
 const MAX_SCREEN_LINES: u32 = N_ROWS;
 var screen_lines: [MAX_SCREEN_LINES][N_COLS]u8 = undefined;
+var screen_line_colors: [MAX_SCREEN_LINES][N_COLS]Color = undefined;
 var screen_line_lengths: [MAX_SCREEN_LINES]u32 = undefined;
 var screen_line_ages: [MAX_SCREEN_LINES]u32 = undefined;
 var num_screen_lines: u32 = 0;
@@ -160,13 +176,200 @@ fn drawChar(c: u8, x: u32, y: u32, rgb: u32) void {
     }
 }
 
-fn drawString(s: []const u8, x: u32, y: u32, rgb: u32) void {
-    var px = x;
-    for (s) |c| {
-        drawChar(c, px, y, rgb);
-        px += CHAR_W;
+// --- ANSI escape sequence parsing ---
+
+// Parse semicolon-separated SGR params and update cur_color / cur_bold.
+fn parseSgr(params: []const u8, cur_color: *Color, cur_bold: *bool) void {
+    var nums: [8]u32 = .{ 0, 0, 0, 0, 0, 0, 0, 0 };
+    var num_count: usize = 0;
+    var cur: u32 = 0;
+    var has_digit = false;
+
+    for (params) |c| {
+        if (c >= '0' and c <= '9') {
+            cur = cur * 10 + (c - '0');
+            has_digit = true;
+        } else if (c == ';') {
+            if (num_count < 8) {
+                nums[num_count] = cur;
+                num_count += 1;
+            }
+            cur = 0;
+            has_digit = false;
+        }
+    }
+    if (has_digit and num_count < 8) {
+        nums[num_count] = cur;
+        num_count += 1;
+    }
+    // Empty params (e.g. ESC [ m) treated as a single 0 = reset
+    if (num_count == 0) {
+        nums[0] = 0;
+        num_count = 1;
+    }
+
+    var i: usize = 0;
+    while (i < num_count) : (i += 1) {
+        switch (nums[i]) {
+            0 => {
+                cur_color.* = .default;
+                cur_bold.* = false;
+            },
+            1 => {
+                cur_bold.* = true;
+                cur_color.* = .bold;
+            },
+            31 => cur_color.* = .red,
+            32 => cur_color.* = .green,
+            39 => cur_color.* = if (cur_bold.*) .bold else .default,
+            38 => {
+                // 38;2;R;G;B — 24-bit true color foreground
+                if (i + 4 < num_count and nums[i + 1] == 2) {
+                    const r = nums[i + 2];
+                    const g = nums[i + 3];
+                    const b = nums[i + 4];
+                    if (r == 23 and g == 147 and b == 209) {
+                        cur_color.* = .arch;
+                    } else {
+                        unknown_color_encountered = true;
+                        cur_color.* = .default;
+                    }
+                    i += 4;
+                }
+            },
+            else => {},
+        }
     }
 }
+
+// Handle a single decoded CSI sequence, updating column, color, and line buffers.
+fn handleCsi(
+    cmd: u8,
+    params: []const u8,
+    col: *u32,
+    cur_color: *Color,
+    cur_bold: *bool,
+    chars: *[N_COLS]u8,
+    colors: *[N_COLS]Color,
+) void {
+    switch (cmd) {
+        'm' => parseSgr(params, cur_color, cur_bold),
+        'G' => {
+            // Cursor to column N (1-based); ESC[G and ESC[1G both move to column 0
+            var n: u32 = 0;
+            var has_digit = false;
+            for (params) |c| {
+                if (c >= '0' and c <= '9') {
+                    n = n * 10 + (c - '0');
+                    has_digit = true;
+                } else break;
+            }
+            const col_1based = if (has_digit and n > 0) n else 1;
+            col.* = col_1based - 1;
+        },
+        'K' => {
+            // Erase in line: 0 (default) = cursor to end, 2 = entire line
+            var n: u32 = 0;
+            var has_digit = false;
+            for (params) |c| {
+                if (c >= '0' and c <= '9') {
+                    n = n * 10 + (c - '0');
+                    has_digit = true;
+                } else break;
+            }
+            const mode = if (has_digit) n else 0;
+            if (mode == 2) {
+                @memset(chars, ' ');
+                @memset(colors, Color.default);
+                col.* = 0;
+            } else {
+                // mode 0: erase from cursor to end
+                var j = col.*;
+                while (j < N_COLS) : (j += 1) {
+                    chars[j] = ' ';
+                    colors[j] = .default;
+                }
+            }
+        },
+        // All other commands (J, H, n, h, p, etc.) are ignored
+        else => {},
+    }
+}
+
+// Process raw content bytes containing ANSI escape sequences into parallel
+// char and Color arrays of length N_COLS. Trailing spaces are trimmed.
+fn processContent(raw: []const u8, out_chars: *[N_COLS]u8, out_colors: *[N_COLS]Color, out_len: *u32) void {
+    @memset(out_chars, ' ');
+    @memset(out_colors, Color.default);
+
+    var col: u32 = 0;
+    var cur_color: Color = .default;
+    var cur_bold: bool = false;
+    var i: usize = 0;
+
+    while (i < raw.len) {
+        const c = raw[i];
+        if (c == 0x1b) {
+            if (i + 1 < raw.len) {
+                switch (raw[i + 1]) {
+                    '[' => {
+                        // CSI sequence: scan for final byte (0x40–0x7E)
+                        i += 2;
+                        const seq_start = i;
+                        while (i < raw.len) {
+                            const sc = raw[i];
+                            if (sc >= 0x40 and sc <= 0x7E) {
+                                handleCsi(sc, raw[seq_start..i], &col, &cur_color, &cur_bold, out_chars, out_colors);
+                                i += 1;
+                                break;
+                            }
+                            i += 1;
+                        }
+                    },
+                    ']' => {
+                        // OSC sequence: skip to BEL (0x07) or ST (ESC \)
+                        i += 2;
+                        while (i < raw.len) {
+                            if (raw[i] == 0x07) {
+                                i += 1;
+                                break;
+                            } else if (raw[i] == 0x1b and i + 1 < raw.len and raw[i + 1] == '\\') {
+                                i += 2;
+                                break;
+                            }
+                            i += 1;
+                        }
+                    },
+                    else => i += 2, // unknown escape sequence: skip ESC + next byte
+                }
+            } else {
+                i += 1;
+            }
+        } else if (c == '\r') {
+            col = 0;
+            i += 1;
+        } else if (c < 32) {
+            // Skip other control characters
+            i += 1;
+        } else {
+            if (col < N_COLS) {
+                out_chars[col] = c;
+                out_colors[col] = cur_color;
+            }
+            col += 1;
+            i += 1;
+        }
+    }
+
+    // Trim trailing spaces
+    var len: u32 = N_COLS;
+    while (len > 0 and out_chars[len - 1] == ' ') {
+        len -= 1;
+    }
+    out_len.* = len;
+}
+
+// --- Screen line management ---
 
 fn scrollUp() void {
     if (num_screen_lines == 0) return;
@@ -174,36 +377,32 @@ fn scrollUp() void {
         screen_line_lengths[i] = screen_line_lengths[i + 1];
         screen_line_ages[i] = screen_line_ages[i + 1];
         @memcpy(&screen_lines[i], &screen_lines[i + 1]);
+        @memcpy(&screen_line_colors[i], &screen_line_colors[i + 1]);
     }
     num_screen_lines -= 1;
 }
 
-fn addScreenLine(text: []const u8) void {
-    // Make room if needed
+fn addScreenLine(chars: []const u8, colors: []const Color) void {
     while (num_screen_lines >= MAX_SCREEN_LINES) {
         scrollUp();
     }
-
-    const copy_len = @min(text.len, N_COLS);
-    @memcpy(screen_lines[num_screen_lines][0..copy_len], text[0..copy_len]);
+    const copy_len = @min(chars.len, N_COLS);
+    @memcpy(screen_lines[num_screen_lines][0..copy_len], chars[0..copy_len]);
+    @memcpy(screen_line_colors[num_screen_lines][0..copy_len], colors[0..copy_len]);
     screen_line_lengths[num_screen_lines] = @intCast(copy_len);
     screen_line_ages[num_screen_lines] = 0;
     num_screen_lines += 1;
 }
 
-fn addLineWithWrap(text: []const u8) void {
-    if (text.len == 0) {
-        addScreenLine("");
-        return;
-    }
-
-    var remaining = text;
-    while (remaining.len > 0) {
-        const chunk_len = @min(remaining.len, N_COLS);
-        addScreenLine(remaining[0..chunk_len]);
-        remaining = remaining[chunk_len..];
-    }
+fn addLineWithWrap(raw: []const u8) void {
+    var proc_chars: [N_COLS]u8 = undefined;
+    var proc_colors: [N_COLS]Color = undefined;
+    var proc_len: u32 = 0;
+    processContent(raw, &proc_chars, &proc_colors, &proc_len);
+    addScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len]);
 }
+
+// --- Timestamp / buffer parsing (unchanged) ---
 
 const ParseResult = struct {
     timestamp_ms: u64,
@@ -213,7 +412,7 @@ const ParseResult = struct {
     is_end_signal: bool,
 };
 
-// Parse timestamp from: -=pr 1234567890.123456 is=-\ncontent
+// Parse timestamp from: [pris 1234567890.123456]  content\n
 fn parseLine(buf: []const u8) ParseResult {
     var result = ParseResult{
         .timestamp_ms = 0,
@@ -231,8 +430,8 @@ fn parseLine(buf: []const u8) ParseResult {
         return result;
     }
 
-    // Look for -=pr prefix
-    if (buf.len < 20 or !std.mem.eql(u8, buf[0..5], "-=pr ")) {
+    // Look for [pris prefix
+    if (buf.len < 10 or !std.mem.eql(u8, buf[0..6], "[pris ")) {
         // Not a timestamp line, find end of line
         for (buf, 0..) |c, i| {
             if (c == '\n') {
@@ -246,8 +445,8 @@ fn parseLine(buf: []const u8) ParseResult {
         return result;
     }
 
-    // Parse seconds
-    var i: u32 = 5;
+    // Parse seconds (starting after "[pris ")
+    var i: u32 = 6;
     var secs: u64 = 0;
     while (i < buf.len and buf[i] >= '0' and buf[i] <= '9') : (i += 1) {
         secs = secs * 10 + (buf[i] - '0');
@@ -272,12 +471,13 @@ fn parseLine(buf: []const u8) ParseResult {
 
     result.timestamp_ms = secs * 1000 + frac;
 
-    // Skip to " is=-\n"
-    while (i < buf.len and buf[i] != '\n') : (i += 1) {}
-    if (i < buf.len and buf[i] == '\n') i += 1;
+    // Skip to ']' then skip spaces — content follows on the same line
+    while (i < buf.len and buf[i] != ']') : (i += 1) {}
+    if (i < buf.len and buf[i] == ']') i += 1;
+    while (i < buf.len and buf[i] == ' ') : (i += 1) {}
     result.content_start = i;
 
-    // Find end of content (next line or end of buffer)
+    // Find end of content (newline or end of buffer)
     while (i < buf.len and buf[i] != '\n') : (i += 1) {}
     result.content_end = i;
     if (i < buf.len and buf[i] == '\n') i += 1;
@@ -352,14 +552,13 @@ fn processPendingLines(now_ms: u64) void {
 }
 
 fn resetForReplay() void {
-    // Clear screen state
     num_screen_lines = 0;
     for (0..MAX_SCREEN_LINES) |i| {
         screen_line_lengths[i] = 0;
         screen_line_ages[i] = N_FADE_STEPS;
+        @memset(&screen_line_colors[i], Color.default);
     }
 
-    // Reset buffer reading
     read_buffer_idx = 0;
     read_pos = 0;
     for (0..NUM_BUFFERS) |i| {
@@ -367,7 +566,6 @@ fn resetForReplay() void {
         buffer_lengths[i] = 0;
     }
 
-    // Reset timing
     have_first_timestamp = false;
     first_line_timestamp_ms = 0;
     reached_end = false;
@@ -378,15 +576,21 @@ fn renderScreen() void {
     // Clear text area
     fillRect(TEXT_X, TEXT_Y, CHAR_W * N_COLS, LINE_H * N_ROWS, SCRN_RGB);
 
-    // Draw lines
+    // Draw lines with per-character color
     for (0..num_screen_lines) |i| {
         const line_len = screen_line_lengths[i];
         const age = screen_line_ages[i];
-        const rgb = if (age >= N_FADE_STEPS) TEXT_RGB else fade_colors[age];
         const y = TEXT_Y + @as(u32, @intCast(i)) * LINE_H;
-        drawString(screen_lines[i][0..line_len], TEXT_X, y, rgb);
 
-        // Age the line
+        for (0..line_len) |j| {
+            const ci = @intFromEnum(screen_line_colors[i][j]);
+            const rgb = if (age >= N_FADE_STEPS)
+                color_normal[ci]
+            else
+                fade_colors[ci][age];
+            drawChar(screen_lines[i][j], TEXT_X + @as(u32, @intCast(j)) * CHAR_W, y, rgb);
+        }
+
         if (screen_line_ages[i] < N_FADE_STEPS) {
             screen_line_ages[i] += 1;
         }
@@ -406,36 +610,40 @@ fn renderScreen() void {
 // === Exports ===
 
 export fn init() void {
-    // Generate fade colors
-    const br = (BRIGHT_RGB >> 16) & 0xFF;
-    const bg = (BRIGHT_RGB >> 8) & 0xFF;
-    const bb = BRIGHT_RGB & 0xFF;
-    const tr = (TEXT_RGB >> 16) & 0xFF;
-    const tg = (TEXT_RGB >> 8) & 0xFF;
-    const tb = TEXT_RGB & 0xFF;
-
-    for (0..N_FADE_STEPS) |i| {
-        const t: u32 = @intCast(i);
-        const r = lerp(br, tr, t, N_FADE_STEPS - 1);
-        const g = lerp(bg, tg, t, N_FADE_STEPS - 1);
-        const b = lerp(bb, tb, t, N_FADE_STEPS - 1);
-        fade_colors[i] = (r << 16) | (g << 8) | b;
+    // Generate per-color fade tables
+    for (0..N_COLORS) |ci| {
+        const bright = color_bright[ci];
+        const normal = color_normal[ci];
+        const br = (bright >> 16) & 0xFF;
+        const bg_c = (bright >> 8) & 0xFF;
+        const bb = bright & 0xFF;
+        const nr = (normal >> 16) & 0xFF;
+        const ng = (normal >> 8) & 0xFF;
+        const nb = normal & 0xFF;
+        for (0..N_FADE_STEPS) |step| {
+            const t: u32 = @intCast(step);
+            const r = lerp(br, nr, t, N_FADE_STEPS - 1);
+            const g = lerp(bg_c, ng, t, N_FADE_STEPS - 1);
+            const b = lerp(bb, nb, t, N_FADE_STEPS - 1);
+            fade_colors[ci][step] = (r << 16) | (g << 8) | b;
+        }
     }
 
     clearScreen();
 
-    // Initialize screen lines
     num_screen_lines = 0;
     for (0..MAX_SCREEN_LINES) |i| {
         screen_line_lengths[i] = 0;
         screen_line_ages[i] = N_FADE_STEPS;
+        @memset(&screen_line_colors[i], Color.default);
     }
 
-    // Initialize buffers
     for (0..NUM_BUFFERS) |i| {
         buffer_states[i] = .empty;
         buffer_lengths[i] = 0;
     }
+
+    unknown_color_encountered = false;
 }
 
 export fn initTiming(start_ms: u64, duration_ms: u64, now_ms: u64) void {
@@ -524,6 +732,10 @@ export fn getMaxChunkSize() u32 {
     return MAX_CHUNK_SZ;
 }
 
+export fn hadUnknownColor() bool {
+    return unknown_color_encountered;
+}
+
 export fn getVersion() u32 {
-    return 4;
+    return 5;
 }

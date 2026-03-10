@@ -24,6 +24,7 @@ interface PrisScreenWasm {
   getScreenWidth(): number;
   getScreenHeight(): number;
   getMaxChunkSize(): number;
+  hadUnknownColor(): boolean;
   getVersion(): number;
 }
 
@@ -112,6 +113,9 @@ async function init(): Promise<void> {
   // Load WASM
   wasm = await loadWasm();
   console.log('WASM loaded, version:', wasm.getVersion());
+  setInterval(() => {
+    if (wasm?.hadUnknownColor()) console.warn('pris-screen: unrecognised ANSI color encountered');
+  }, 5000);
 
   // Initialize WASM
   wasm.init();

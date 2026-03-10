@@ -1,0 +1,25 @@
+[pris 1773082837.664647]  [[0;32m  OK  [0m] Started [0;1;39mNetwork Management[0m.
+[pris 1773082837.669517]  [[0;32m  OK  [0m] Reached target [0;1;39mNetwork[0m.
+[pris 1773082837.696676]           Starting [0;1;39mEnable Persistent Storage in systemd-networkd[0m...
+[pris 1773082838.207699]  [[0;32m  OK  [0m] Finished [0;1;39mEnable Persistent Storage in systemd-networkd[0m.
+[pris 1773082838.447523]  [[0;32m  OK  [0m] Started [0;1;39mD-Bus System Message Bus[0m.
+[pris 1773082838.898523]  [[0;32m  OK  [0m] Reached target [0;1;39mBasic System[0m.
+[pris 1773082838.957741]           Starting [0;1;39mOpenSSH Daemon[0m...
+[pris 1773082839.121717]           Starting [0;1;39mUser Login Management[0m...
+[pris 1773082839.251678]           Starting [0;1;39mPermit User Sessions[0m...
+[pris 1773082839.886504]  [[0;32m  OK  [0m] Finished [0;1;39mPermit User Sessions[0m.
+[pris 1773082839.957431]  [[0;32m  OK  [0m] Started [0;1;39mGetty on tty1[0m.
+[pris 1773082840.024166]  [[0;32m  OK  [0m] Started [0;1;39mSerial Getty on ttyS0[0m.
+[pris 1773082840.068687]  [[0;32m  OK  [0m] Reached target [0;1;39mLogin Prompts[0m.
+[pris 1773082840.110031]  [[0;32m  OK  [0m] Started [0;1;39mOpenSSH Daemon[0m.
+[pris 1773082840.148518]  [[0;32m  OK  [0m] Reached target [0;1;39mSSH Access Available[0m.
+[pris 1773082840.793864]  [[0;32m  OK  [0m] Started [0;1;39mUser Login Management[0m.
+[pris 1773082840.837103]  [[0;32m  OK  [0m] Reached target [0;1;39mMulti-User System[0m.
+[pris 1773082840.854698]  [[0;32m  OK  [0m] Reached target [0;1;39mGraphical Interface[0m.
+[pris 1773082842.243239]  [!p]104\[0m[?7h[1G[0J[6n[32766;32766H[6n[!p]104\[0m[?7h[1G[0J[6n[32766;32766H[6n]3008;start=4c9b3324406246ee89ab12bbe2a01289;user=root;hostname=pris;machineid=c9de2aea1cfb4838868469e64b70c037;bootid=c10efd8c6a1147c8909aa59e1c479b5f;pid=455;pidfdid=456;comm=(agetty);servicename=serial-getty@ttyS0.service;invocationid=511ccf3476954c01a9177e909ba85e93;type=service\P+q6E616D65\
+[pris 1773082842.243515]  Arch Linux 6.18.13-arch1-1 (ttyS0)
+[pris 1773082842.243612]  
+[pris 1773082842.248585]  pris login: root (automatic login)
+[pris 1773082842.249065]  
+
+-=END=-
