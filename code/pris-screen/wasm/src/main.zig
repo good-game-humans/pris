@@ -6,8 +6,8 @@ pub const CHAR_W: u32 = font.FONT_W;
 pub const LINE_H: u32 = font.FONT_H + 1; // Add 1px line spacing
 
 // Display constants
-pub const N_COLS: u32 = 80;
-pub const N_ROWS: u32 = 24;
+pub const N_COLS: u32 = 120;
+pub const N_ROWS: u32 = 40;
 pub const TEXT_X: u32 = 8;
 pub const TEXT_Y: u32 = 8;
 pub const SCREEN_W: u32 = TEXT_X * 2 + CHAR_W * N_COLS;
@@ -31,6 +31,34 @@ const color_normal: [N_COLORS]u32 = .{ 0xC0C0C0, 0xC0C0C0, 0x803030, 0x308030, 0
 pub const SCRN_RGB: u32 = 0x2B4D59;
 pub const BORDER_RGB: u32 = 0x3A5C61;
 pub const CURSOR_RGB: u32 = 0xFF0000;
+
+// Rounded corner data (ported from original Java Pipe.java)
+// Index 21 = outer background, index 22 = screen interior (SCRN_RGB)
+const CORNER_W: u32 = 15;
+const CORNER_H: u32 = 15;
+const corner_pix: [CORNER_W * CORNER_H]u8 = .{
+    21,21,21,21,21,21,21,21,21,11, 1, 0, 6, 9,14,
+    21,21,21,21,21,21,21, 2, 7,18,10,20, 4, 5,12,
+    21,21,21,21,21,21, 8,16,20,15,22,22,22,22,22,
+    21,21,21,21,13, 0,17, 3,22,22,22,22,22,22,22,
+    21,21,21,13,19,20,22,22,22,22,22,22,22,22,22,
+    21,21,21, 0,20,22,22,22,22,22,22,22,22,22,22,
+    21,21, 8,17,22,22,22,22,22,22,22,22,22,22,22,
+    21, 2,16, 3,22,22,22,22,22,22,22,22,22,22,22,
+    21, 7,20,22,22,22,22,22,22,22,22,22,22,22,22,
+    11,18,15,22,22,22,22,22,22,22,22,22,22,22,22,
+     1,10,22,22,22,22,22,22,22,22,22,22,22,22,22,
+     0,20,22,22,22,22,22,22,22,22,22,22,22,22,22,
+     6, 4,22,22,22,22,22,22,22,22,22,22,22,22,22,
+     9, 5,22,22,22,22,22,22,22,22,22,22,22,22,22,
+    14,12,22,22,22,22,22,22,22,22,22,22,22,22,22,
+};
+const corner_rgb: [23]u32 = .{
+    0x35555C, 0x325156, 0x2F494E, 0x2E505B, 0x2F515B, 0x2C4F5A,
+    0x38595E, 0x34545B, 0x335359, 0x395B60, 0x35575E, 0x2D454B,
+    0x2C4E59, 0x2D454A, 0x395B61, 0x2D505B, 0x385A5F, 0x34565D,
+    0x385B60, 0x35575D, 0x32545C, 0x2B3E43, 0x2B4D59,
+};
 
 pub const N_FADE_STEPS: u32 = 25;
 
@@ -92,13 +120,26 @@ fn rgbToRgba(rgb: u32) u32 {
     return 0xFF000000 | (b << 16) | (g << 8) | r;
 }
 
-fn drawBorder() void {
+fn drawCorners() void {
+    // Paint all 4 corners by mirroring the top-left corner data
+    for (0..CORNER_H) |y| {
+        for (0..CORNER_W) |x| {
+            const rgb = corner_rgb[corner_pix[y * CORNER_W + x]];
+            const px = @as(u32, @intCast(x));
+            const py = @as(u32, @intCast(y));
+            setPixel(px,              py,              rgb); // top-left
+            setPixel(SCREEN_W-1-px,  py,              rgb); // top-right
+            setPixel(px,             SCREEN_H-1-py,   rgb); // bottom-left
+            setPixel(SCREEN_W-1-px,  SCREEN_H-1-py,  rgb); // bottom-right
+        }
+    }
+    // Straight border edges between corners
     const border = rgbToRgba(BORDER_RGB);
-    for (0..SCREEN_W) |x| {
+    for (CORNER_W..SCREEN_W - CORNER_W) |x| {
         pixels[x] = border;
         pixels[x + (SCREEN_H - 1) * SCREEN_W] = border;
     }
-    for (0..SCREEN_H) |y| {
+    for (CORNER_H..SCREEN_H - CORNER_H) |y| {
         pixels[y * SCREEN_W] = border;
         pixels[y * SCREEN_W + SCREEN_W - 1] = border;
     }
@@ -109,7 +150,7 @@ fn clearScreen() void {
     for (&pixels) |*p| {
         p.* = rgba;
     }
-    drawBorder();
+    drawCorners();
 }
 
 fn blendPixel(x: u32, y: u32, rgb: u32, alpha: u8) void {
@@ -334,6 +375,17 @@ fn processContent(raw: []const u8, out_chars: *[N_COLS]u8, out_colors: *[N_COLS]
                                 i += 1;
                                 break;
                             } else if (raw[i] == 0x1b and i + 1 < raw.len and raw[i + 1] == '\\') {
+                                i += 2;
+                                break;
+                            }
+                            i += 1;
+                        }
+                    },
+                    'P' => {
+                        // DCS sequence: skip to ST (ESC \)
+                        i += 2;
+                        while (i < raw.len) {
+                            if (raw[i] == 0x1b and i + 1 < raw.len and raw[i + 1] == '\\') {
                                 i += 2;
                                 break;
                             }

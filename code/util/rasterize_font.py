@@ -14,7 +14,7 @@ except ImportError:
     sys.exit(1)
 
 # Configuration
-FONT_PATH = Path(__file__).parent.parent.parent / "fonts/Fira_Code_v6.2/ttf/FiraCode-Medium.ttf"
+FONT_PATH = Path(__file__).parent.parent.parent / "fonts/VictorMonoAll/TTF/VictorMono-Regular.ttf"
 FONT_SIZE = 16
 CHARS = "".join(chr(c) for c in range(32, 127))  # ASCII 32-126
 
@@ -39,12 +39,14 @@ def main():
         max_height = max(max_height, height)
         char_metrics.append((char, bbox))
 
-    # Use fixed cell size for monospace font
-    # Add padding for descenders and ascenders
-    cell_width = max_width + 2
-    cell_height = max_height + 4  # Use measured height plus padding
+    # Compute cell size from actual ascent/descent extents across all glyphs
+    max_ascent  = max(-bbox[1] for _, bbox in char_metrics)  # pixels above origin
+    max_descent = max( bbox[3] for _, bbox in char_metrics)  # pixels below origin
+    cell_width  = max_width + 2
+    y_offset    = max_ascent + 2   # 2px top padding
+    cell_height = y_offset + max_descent + 2  # 2px bottom padding
 
-    print(f"// Font: Fira Code Regular {FONT_SIZE}pt")
+    print(f"// Font: {FONT_PATH.stem} {FONT_SIZE}pt")
     print(f"// Cell size: {cell_width}x{cell_height}")
     print(f"// Characters: ASCII 32-126 ({len(CHARS)} glyphs)")
     print()
@@ -62,7 +64,6 @@ def main():
         # Center the character horizontally, align to baseline
         bbox = font.getbbox(char)
         x_offset = (cell_width - (bbox[2] - bbox[0])) // 2 - bbox[0]
-        y_offset = 2  # Small top padding
 
         draw.text((x_offset, y_offset), char, font=font, fill=255)
 
