@@ -136,6 +136,87 @@ Key flags:
 - `-display none`: No graphical display needed
 - No `-enable-kvm`: standard EC2 instances don't support nested virtualization
 
+## Creating the pris.qcow2 Boot Image
+
+Once the LFS build is complete at `/mnt/lfs`, copy it to a new bootable qcow2.
+
+### 1. Create the qcow2 on the EC2 host
+
+```bash
+qemu-img create -f qcow2 ~/pris/setup/aws/pris.qcow2 40G
+```
+
+### 2. Start QEMU with pris.qcow2 as a second drive
+
+```bash
+qemu-system-x86_64 \
+  -m 2G \
+  -smp 4 \
+  -hda ~/pris/setup/aws/lfs.qcow2 \
+  -hdb ~/pris/setup/aws/pris.qcow2 \
+  -kernel ~/pris/setup/aws/arch-boot/vmlinuz-linux \
+  -initrd ~/pris/setup/aws/arch-boot/initramfs-linux.img \
+  -append "root=/dev/sda1 rw console=ttyS0,115200" \
+  -nic user,hostfwd=tcp::2222-:22 \
+  -serial stdio \
+  -display none
+```
+
+### 3. Partition and format pris.qcow2 (inside the VM)
+
+```bash
+fdisk /dev/sdb
+```
+
+Create two partitions:
+- `/dev/sdb1` — 36G Linux root (type 83)
+- `/dev/sdb2` — 4G Linux swap (type 82)
+
+```bash
+mkfs.ext4 -v -L "pris" /dev/sdb1
+mkswap /dev/sdb2
+```
+
+### 4. Copy the LFS build
+
+```bash
+mkdir -p /mnt/pris
+mount /dev/sdb1 /mnt/pris
+cp -a /mnt/lfs/. /mnt/pris/
+```
+
+### 5. Install GRUB (inside the VM)
+
+```bash
+mount --bind /dev /mnt/pris/dev
+mount --bind /proc /mnt/pris/proc
+mount --bind /sys /mnt/pris/sys
+chroot /mnt/pris /usr/sbin/grub-install --target=i386-pc /dev/sdb
+chroot /mnt/pris /usr/sbin/grub-mkconfig -o /boot/grub/grub.cfg
+```
+
+### 6. Copy the LFS kernel to the EC2 host
+
+From the EC2 host (not inside the VM):
+
+```bash
+mkdir -p ~/pris/setup/aws/pris-boot
+scp -P 2222 root@localhost:/mnt/pris/boot/vmlinuz-6.16.1-lfs-12.4 \
+    ~/pris/setup/aws/pris-boot/vmlinuz-pris
+```
+
+No initramfs is needed — the LFS kernel is built with all required drivers compiled in.
+
+### 7. Unmount and shut down (inside the VM)
+
+```bash
+umount /mnt/pris/dev
+umount /mnt/pris/proc
+umount /mnt/pris/sys
+umount /mnt/pris
+shutdown -h now
+```
+
 ## Output Capture for pris-screen
 
 The build output is logged with timestamps in the format:
