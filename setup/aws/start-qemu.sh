@@ -5,7 +5,6 @@
 
 PRIS_DIR="$HOME/pris"
 LOG_FILE="$PRIS_DIR/setup/aws/build.log"
-
 BOOT_DIR="$PRIS_DIR/setup/aws/arch-boot"
 
 cat << 'EOF'

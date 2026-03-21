@@ -94,7 +94,21 @@ ssh -p 2222 root@localhost
 
 (sshd is enabled and starts automatically at boot)
 
+### 8. Set up pris rebuild to start after boot
+
+```mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d/
+cat > /etc/systemd/system/serial-getty@ttyS0.service.d/override.conf << 'EOF'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --login-program /pris/pris-rebuild-a.sh ttyS0 115200 vt220
+# Restart=no # Use for debugging
+EOF
+```
+
 ## Start Script
+
+Run the `start-qemu.sh` script from a tmux session with 146 columns wide, to match
+`pris-screen`, after adding the space for the timestamp.
 
 The start script (`setup/aws/start-qemu.sh`) uses direct kernel boot:
 
@@ -127,11 +141,6 @@ Key flags:
 The build output is logged with timestamps in the format:
 ```
 [pris SECONDS.MICROSECONDS] line of output
-```
-
-To chunk the log for pris-screen:
-```bash
-# TODO: Add chunking script
 ```
 
 ## Directory Structure
