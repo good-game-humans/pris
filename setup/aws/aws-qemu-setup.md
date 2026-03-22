@@ -262,6 +262,25 @@ The `markers/` directory is used by `place_marker` and `marker_exists` in `pris-
 to track which build steps have already completed, enabling the build to resume after
 a restart.
 
+### Preparing pris-scripts.qcow2
+
+```bash
+qemu-img create -f qcow2 ~/pris/setup/aws/pris-scripts.qcow2 100M
+sudo modprobe nbd max_part=8
+sudo qemu-nbd -c /dev/nbd0 ~/pris/setup/aws/pris-scripts.qcow2
+sudo mkfs.ext4 -T small -L "pris-scripts" /dev/nbd0
+sudo mkdir -p /mnt/pris-scripts
+sudo mount /dev/nbd0 /mnt/pris-scripts
+sudo cp ~/pris/code/pris-rebuild/* /mnt/pris-scripts/
+sudo chmod +x /mnt/pris-scripts/*.sh
+sudo mkdir -p /mnt/pris-scripts/markers
+sudo umount /mnt/pris-scripts
+sudo qemu-nbd -d /dev/nbd0
+```
+
+Note: use `-T small` with `mkfs.ext4` to allocate enough inodes for the many small
+marker files — the default inode ratio is insufficient.
+
 ## Notes
 - EC2 root volume is 8GB — keep it clean, the qcow2 is the main storage
 - qcow2 compression is transparent to QEMU; no decompression needed before use

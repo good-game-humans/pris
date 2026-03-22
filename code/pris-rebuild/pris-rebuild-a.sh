@@ -179,7 +179,7 @@ fi
 # Run the next part of build as lfs user
 su - lfs -c "bash ${PRIS_DIR}/pris-rebuild-b.sh"
 
-if ! marker_exists "virtual-kernel-filesystem" ; then
+if ! marker_exists "virtual-kernel-fs" ; then
     cmd 'chown --from lfs -R root:root $LFS/{usr,var,etc,tools}'
     cmd 'case $(uname -m) in
   x86_64) chown --from lfs -R root:root $LFS/lib64 ;;
@@ -188,7 +188,7 @@ esac'
 
     mkdir -p "$LFS/pris"
 
-    place_marker "virtual-kernel-filesystem"
+    place_marker "virtual-kernel-fs"
 fi
 
 cmd 'mount -v --bind /dev $LFS/dev'

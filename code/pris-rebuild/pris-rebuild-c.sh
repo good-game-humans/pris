@@ -168,11 +168,11 @@ if ! marker_exists "temp-util-linux" ; then
     place_marker "temp-util-linux"
 fi
 
-if ! marker_exists "clean-temporary-system" ; then
+if ! marker_exists "clean-temp-system" ; then
     cmd 'rm -rf /usr/share/{info,man,doc}/*'
     cmd 'find /usr/{lib,libexec} -name \*.la -delete'
     cmd 'rm -rf /tools'
-    place_marker "clean-temporary-system"
+    place_marker "clean-temp-system"
 fi
 
 if ! marker_exists "man-pages" ; then

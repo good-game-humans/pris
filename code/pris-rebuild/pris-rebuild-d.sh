@@ -707,7 +707,7 @@ if ! marker_exists "e2fsprogs" ; then
     cmd 'install -v -m644 doc/com_err.info /usr/share/info'
     cmd 'install-info --dir-file=/usr/share/info/dir /usr/share/info/com_err.info'
     cmd 'cd /sources'
-    cmd 'rm -rf e2fsprogs-1.47.2'
+    cmd 'rm -rf e2fsprogs-1.47.3'
     place_marker "e2fsprogs"
 fi
 
@@ -823,11 +823,11 @@ if ! marker_exists "lfs-bootscripts" ; then
     cmd 'cd lfs-bootscripts-20250827'
     cmd 'make install'
     cmd 'cd /sources'
-    cmd 'rm -rf lfs-bootscripts'
+    cmd 'rm -rf lfs-bootscripts-20250827'
     place_marker "lfs-bootscripts"
 fi
 
-if ! marker_exists "system-configuration" ; then
+if ! marker_exists "system-config" ; then
     cmd 'cat > /etc/sysconfig/ifconfig.ens3 << "EOF"
 ONBOOT=yes
 IFACE=ens3
@@ -1082,23 +1082,7 @@ cgroup2        /sys/fs/cgroup cgroup2  nosuid,noexec,nodev 0     0
 
 # End /etc/fstab
 EOF'
-
-# # Static information about the filesystems.
-# # See fstab(5) for details.
-#
-# # <file system> <dir> <type> <options> <dump> <pass>
-# # /dev/sda1
-# UUID=97ec9430-0684-4303-bda3-646e8e13e92b    /             ext4          rw,relatime    0 1
-#
-# # /dev/sda2
-# UUID=55bb72f8-28e5-4049-968b-ff079b7e4fc8    none          swap          defaults      0 0
-#
-# ubuntu@ip-172-31-255-244:~$ cat /etc/fstab
-# LABEL=cloudimg-rootfs    /     ext4    discard,commit=30,errors=remount-ro    0 1
-# LABEL=BOOT    /boot    ext4    defaults    0 2
-# LABEL=UEFI    /boot/efi    vfat    umask=0077    0 1
-
-    place_marker "system-configuration"
+    place_marker "system-config"
 fi
 
 if ! marker_exists "linux" ; then
@@ -1124,6 +1108,20 @@ EOF"
     cmd 'cd /sources'
     cmd 'rm -rf linux-6.16.1'
     place_marker "linux"
+fi
+
+
+if ! marker_exists "wget" ; then
+    cmd 'tar -xf wget-1.25.0.tar.gz'
+    cmd 'cd wget-1.25.0'
+    cmd './configure --prefix=/usr      \
+            --sysconfdir=/etc  \
+            --with-ssl=openssl &&
+make'
+    cmd 'make install'
+    cmd 'cd /sources'
+    cmd 'rm -rf wget-1.25.0'
+    place_marker "wget"
 fi
 
 logout
