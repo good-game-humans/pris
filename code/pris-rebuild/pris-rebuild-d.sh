@@ -275,6 +275,7 @@ fi
 if ! marker_exists "ninja" ; then
     cmd 'tar -xf ninja-1.13.1.tar.gz'
     cmd 'cd ninja-1.13.1'
+    cmd 'export NINJAJOBS=$(nproc)'
     cmd 'sed -i '"'"'/int Guess/a \
   int   j = 0;\
   char* jobs = getenv( "NINJAJOBS" );\
@@ -289,6 +290,8 @@ if ! marker_exists "ninja" ; then
     cmd 'rm -rf ninja-1.13.1'
     place_marker "ninja"
 fi
+
+export NINJAJOBS=$(nproc)
 
 if ! marker_exists "meson" ; then
     cmd 'tar -xf meson-1.8.3.tar.gz'
@@ -881,7 +884,7 @@ s1:1:respawn:/sbin/sulogin
 5:2345:respawn:/sbin/agetty tty5 9600
 6:2345:respawn:/sbin/agetty tty6 9600
 
-S0:2345:respawn:/sbin/agetty --autologin root --login-program /pris/pris-rebuild-a.sh ttyS0 115200 vt220
+S0:2345:once:/sbin/agetty --autologin root --login-program /pris/pris-rebuild-a.sh ttyS0 115200 vt220
 
 # End /etc/inittab
 EOF'
@@ -1110,6 +1113,63 @@ EOF"
     place_marker "linux"
 fi
 
+if ! marker_exists "libtasn1" ; then
+    cmd 'tar -xf libtasn1-4.20.0.tar.gz'
+    cmd 'cd libtasn1-4.20.0'
+    cmd './configure --prefix=/usr --disable-static &&
+make'
+    cmd 'make install'
+    cmd 'make -C doc/reference install-data-local'
+    cmd 'cd /sources'
+    cmd 'rm -rf libtasn1-4.20.0'
+    place_marker "libtasn1"
+fi
+
+if ! marker_exists "p11-kit" ; then
+    cmd 'tar -xf p11-kit-0.25.5.tar.xz'
+    cmd 'cd p11-kit-0.25.5'
+    cmd "sed '20,\$ d' -i trust/trust-extract-compat &&
+cat >> trust/trust-extract-compat << \"EOF\"
+# Copy existing anchor modifications to /etc/ssl/local
+/usr/libexec/make-ca/copy-trust-modifications
+
+# Update trust stores
+/usr/sbin/make-ca -r
+EOF"
+    cmd 'mkdir p11-build &&
+cd    p11-build &&
+meson setup ..            \
+      --prefix=/usr       \
+      --buildtype=release \
+      -D trust_paths=/etc/pki/anchors &&
+ninja'
+    cmd 'ninja install &&
+ln -sfv /usr/libexec/p11-kit/trust-extract-compat \
+        /usr/bin/update-ca-certificates'
+    cmd 'ln -sfv ./pkcs11/p11-kit-trust.so /usr/lib/libnssckbi.so'
+    cmd 'cd /sources'
+    cmd 'rm -rf libtasn1-4.20.0'
+    place_marker "p11-kit"
+fi
+
+if ! marker_exists "make-ca" ; then
+    cmd 'tar -xf make-ca-1.16.1.tar.gz'
+    cmd 'cd make-ca-1.16.1'
+    cmd 'make install &&
+install -vdm755 /etc/ssl/local'
+    cmd '/usr/sbin/make-ca -g'
+    cmd 'export _PIP_STANDALONE_CERT=/etc/pki/tls/certs/ca-bundle.crt'
+    cmd 'mkdir -pv /etc/profile.d &&
+cat > /etc/profile.d/pythoncerts.sh << "EOF"
+# Begin /etc/profile.d/pythoncerts.sh
+
+export _PIP_STANDALONE_CERT=/etc/pki/tls/certs/ca-bundle.crt
+
+# End /etc/profile.d/pythoncerts.sh
+EOF'
+    cmd 'rm -rf make-ca-1.16.1'
+    place_marker "make-ca"
+fi
 
 if ! marker_exists "wget" ; then
     cmd 'tar -xf wget-1.25.0.tar.gz'
