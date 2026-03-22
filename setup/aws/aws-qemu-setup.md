@@ -230,13 +230,37 @@ The build output is logged with timestamps in the format:
 ├── setup/
 │   └── aws/
 │       ├── arch-boot/
-│       │   ├── vmlinuz-linux       # Extracted from installed qcow2
-│       │   └── initramfs-linux.img # Extracted from installed qcow2
-│       ├── lfs.qcow2               # Installed Arch Linux (compressed qcow2)
+│       │   ├── vmlinuz-linux       # Extracted from Arch qcow2
+│       │   └── initramfs-linux.img # Extracted from Arch qcow2
+│       ├── pris-boot/
+│       │   └── vmlinuz-pris        # Extracted from LFS kernel
+│       ├── lfs.qcow2               # Arch Linux bootstrap image
+│       ├── pris.qcow2              # LFS root filesystem (boots as /dev/sda)
+│       ├── pris-scripts.qcow2      # pris scripts image (mounts as /pris)
 │       ├── start-qemu.sh           # Boot script
-│       ├── build.log               # Timestamped output log
+│       ├── pris.log                # Timestamped output log
 │       └── aws-qemu-setup.md       # This file
 ```
+
+## pris-scripts.qcow2 Layout
+
+Mounted at `/pris` inside the VM. Contains the rebuild scripts and build state.
+
+```
+/pris/
+├── pris-fns.sh          # Shared functions (cmd, marker_exists, place_marker)
+├── pris-rebuild-a.sh    # LFS build stage A (run on boot via inittab)
+├── pris-rebuild-b.sh    # LFS build stage B
+├── pris-rebuild-c.sh    # LFS build stage C
+├── pris-rebuild-d.sh    # LFS build stage D
+├── download-packages.sh # Package download script
+├── lfs-mirrors          # Mirror list for package downloads
+└── markers/             # Build progress markers (one file per completed step)
+```
+
+The `markers/` directory is used by `place_marker` and `marker_exists` in `pris-fns.sh`
+to track which build steps have already completed, enabling the build to resume after
+a restart.
 
 ## Notes
 - EC2 root volume is 8GB — keep it clean, the qcow2 is the main storage
