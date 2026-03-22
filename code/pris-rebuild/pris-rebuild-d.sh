@@ -828,10 +828,20 @@ if ! marker_exists "lfs-bootscripts" ; then
 fi
 
 if ! marker_exists "system-configuration" ; then
+    cmd 'cat > /etc/sysconfig/ifconfig.ens3 << "EOF"
+ONBOOT=yes
+IFACE=ens3
+SERVICE=ipv4-static
+IP=10.0.2.15
+GATEWAY=10.0.2.2
+PREFIX=24
+BROADCAST=10.0.2.255
+EOF'
     cmd 'cat > /etc/resolv.conf << "EOF"
 # Begin /etc/resolv.conf
 
 nameserver 8.8.8.8
+nameserver 10.0.2.3
 
 # End /etc/resolv.conf
 EOF'
@@ -870,6 +880,8 @@ s1:1:respawn:/sbin/sulogin
 4:2345:respawn:/sbin/agetty tty4 9600
 5:2345:respawn:/sbin/agetty tty5 9600
 6:2345:respawn:/sbin/agetty tty6 9600
+
+S0:2345:respawn:/sbin/agetty --autologin root --login-program /pris/pris-rebuild-a.sh ttyS0 115200 vt220
 
 # End /etc/inittab
 EOF'
@@ -930,7 +942,7 @@ EOF'
 # Manually set the right edge of message output (characters)
 # Useful when resetting console font during boot to override
 # automatic screen width detection
-#COLUMNS=120
+COLUMNS=120
 
 # Interactive startup
 #IPROMPT="yes" # Whether to display the interactive boot prompt
@@ -1059,6 +1071,14 @@ EOF'
 
 /dev/sda1      /              ext4     defaults            1     1
 /dev/sda2      swap           swap     pri=1               0     0
+/dev/sdb       /pris          ext4     defaults            0     0
+proc           /proc          proc     nosuid,noexec,nodev 0     0
+sysfs          /sys           sysfs    nosuid,noexec,nodev 0     0
+devpts         /dev/pts       devpts   gid=5,mode=620      0     0
+tmpfs          /run           tmpfs    defaults            0     0
+devtmpfs       /dev           devtmpfs mode=0755,nosuid    0     0
+tmpfs          /dev/shm       tmpfs    nosuid,nodev        0     0
+cgroup2        /sys/fs/cgroup cgroup2  nosuid,noexec,nodev 0     0
 
 # End /etc/fstab
 EOF'

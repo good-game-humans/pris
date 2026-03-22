@@ -18,6 +18,7 @@ exec qemu-system-x86_64 \
   -m 2G \
   -smp 4 \
   -hda "$PRIS_DIR/setup/aws/pris.qcow2" \
+  -hdb "$PRIS_DIR/setup/aws/pris-scripts.qcow2" \
   -kernel "$BOOT_DIR/vmlinuz-pris" \
   -append "root=/dev/sda1 rw console=ttyS0,115200" \
   -nic user,hostfwd=tcp::2222-:22 \
