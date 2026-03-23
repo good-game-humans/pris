@@ -46,7 +46,7 @@ async function loadWasm(): Promise<PrisScreenWasm> {
 }
 
 function chunkFilename(num: number): string {
-  return `${DATA_PATH}/pris-lines-${num.toString().padStart(4, '0')}.txt`;
+  return `${DATA_PATH}/pris-lines-${num.toString().padStart(6, '0')}.txt`;
 }
 
 async function fetchAndFillBuffer(): Promise<void> {

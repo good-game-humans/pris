@@ -15,17 +15,71 @@ pub const SCREEN_H: u32 = TEXT_Y * 2 + LINE_H * N_ROWS;
 
 // Color palette
 const Color = enum(u8) {
-    default = 0,
-    bold    = 1,
-    red     = 2,
-    green   = 3,
-    arch    = 4,
+    default    = 0,
+    bold       = 1,
+    red        = 2,   // SGR 31
+    green      = 3,   // SGR 32
+    arch       = 4,   // SGR 38;2;23;147;209
+    yellow     = 5,   // SGR 33
+    blue       = 6,   // SGR 34
+    magenta    = 7,   // SGR 35
+    cyan       = 8,   // SGR 36
+    white      = 9,   // SGR 37
+    black      = 10,  // SGR 30
+    br_black   = 11,  // SGR 90
+    br_red     = 12,  // SGR 91
+    br_green   = 13,  // SGR 92
+    br_yellow  = 14,  // SGR 93
+    br_blue    = 15,  // SGR 94
+    br_magenta = 16,  // SGR 95
+    br_cyan    = 17,  // SGR 96
+    br_white   = 18,  // SGR 97
 };
 const N_COLORS = @typeInfo(Color).@"enum".fields.len;
 
 // Bright (age=0) and normal (fully aged) RGB values per palette entry
-const color_bright: [N_COLORS]u32 = .{ 0xBBFF82, 0xFFFFFF, 0xFF5555, 0x55FF55, 0x1793D1 };
-const color_normal: [N_COLORS]u32 = .{ 0xC0C0C0, 0xC0C0C0, 0x803030, 0x308030, 0x0F5A8A };
+const color_bright: [N_COLORS]u32 = .{
+    0xBBFF82, // default
+    0xFFFFFF, // bold
+    0xFF5555, // red     (SGR 31)
+    0x55FF55, // green   (SGR 32)
+    0x1793D1, // arch    (38;2;23;147;209)
+    0xFFFF55, // yellow  (SGR 33)
+    0x6666FF, // blue    (SGR 34)
+    0xFF55FF, // magenta (SGR 35)
+    0x55FFFF, // cyan    (SGR 36)
+    0xFFFFFF, // white   (SGR 37)
+    0x555555, // black   (SGR 30)
+    0x888888, // br_black  (SGR 90)
+    0xFF5555, // br_red    (SGR 91)
+    0x55FF55, // br_green  (SGR 92)
+    0xFFFF55, // br_yellow (SGR 93)
+    0x6666FF, // br_blue   (SGR 94)
+    0xFF55FF, // br_magenta(SGR 95)
+    0x55FFFF, // br_cyan   (SGR 96)
+    0xFFFFFF, // br_white  (SGR 97)
+};
+const color_normal: [N_COLORS]u32 = .{
+    0xC0C0C0, // default
+    0xC0C0C0, // bold
+    0x803030, // red     (SGR 31)
+    0x308030, // green   (SGR 32)
+    0x0F5A8A, // arch    (38;2;23;147;209)
+    0x807030, // yellow  (SGR 33)
+    0x3030A0, // blue    (SGR 34)
+    0x803080, // magenta (SGR 35)
+    0x307878, // cyan    (SGR 36)
+    0xC0C0C0, // white   (SGR 37)
+    0x333333, // black   (SGR 30)
+    0x555555, // br_black  (SGR 90)
+    0x803030, // br_red    (SGR 91)
+    0x308030, // br_green  (SGR 92)
+    0x807030, // br_yellow (SGR 93)
+    0x3030A0, // br_blue   (SGR 94)
+    0x803080, // br_magenta(SGR 95)
+    0x307878, // br_cyan   (SGR 96)
+    0xC0C0C0, // br_white  (SGR 97)
+};
 
 // Other colors (RGB format)
 pub const SCRN_RGB: u32 = 0x2B4D59;
@@ -86,6 +140,10 @@ var reached_end: bool = false;
 var cursor_visible: bool = true;
 var last_cursor_toggle_ms: u64 = 0;
 const CURSOR_BLINK_MS: u64 = 500;
+
+// Pending command: set when a "[pris:/dir]> " prompt line is seen; the next
+// line gets appended to the "> " line rather than added as a new one.
+var pending_command: bool = false;
 
 // Pixel buffer (RGBA format for canvas)
 var pixels: [SCREEN_W * SCREEN_H]u32 = undefined;
@@ -260,9 +318,23 @@ fn parseSgr(params: []const u8, cur_color: *Color, cur_bold: *bool) void {
                 cur_bold.* = true;
                 cur_color.* = .bold;
             },
+            30 => cur_color.* = .black,
             31 => cur_color.* = .red,
             32 => cur_color.* = .green,
+            33 => cur_color.* = .yellow,
+            34 => cur_color.* = .blue,
+            35 => cur_color.* = .magenta,
+            36 => cur_color.* = .cyan,
+            37 => cur_color.* = .white,
             39 => cur_color.* = if (cur_bold.*) .bold else .default,
+            90 => cur_color.* = .br_black,
+            91 => cur_color.* = .br_red,
+            92 => cur_color.* = .br_green,
+            93 => cur_color.* = .br_yellow,
+            94 => cur_color.* = .br_blue,
+            95 => cur_color.* = .br_magenta,
+            96 => cur_color.* = .br_cyan,
+            97 => cur_color.* = .br_white,
             38 => {
                 // 38;2;R;G;B — 24-bit true color foreground
                 if (i + 4 < num_count and nums[i + 1] == 2) {
@@ -339,7 +411,15 @@ fn handleCsi(
 
 // Process raw content bytes containing ANSI escape sequences into parallel
 // char and Color arrays of length N_COLS. Trailing spaces are trimmed.
-fn processContent(raw: []const u8, out_chars: *[N_COLS]u8, out_colors: *[N_COLS]Color, out_len: *u32) void {
+// Sets out_raw_consumed to the number of raw bytes consumed; stops at N_COLS
+// visible characters so the caller can wrap by re-invoking with the remainder.
+fn processContent(
+    raw: []const u8,
+    out_chars: *[N_COLS]u8,
+    out_colors: *[N_COLS]Color,
+    out_len: *u32,
+    out_raw_consumed: *u32,
+) void {
     @memset(out_chars, ' ');
     @memset(out_colors, Color.default);
 
@@ -407,13 +487,21 @@ fn processContent(raw: []const u8, out_chars: *[N_COLS]u8, out_colors: *[N_COLS]
             if (col < N_COLS) {
                 out_chars[col] = c;
                 out_colors[col] = cur_color;
+                col += 1;
+                i += 1;
+            } else {
+                // Line full — stop here so caller can wrap
+                out_raw_consumed.* = @intCast(i);
+                var len: u32 = N_COLS;
+                while (len > 0 and out_chars[len - 1] == ' ') len -= 1;
+                out_len.* = len;
+                return;
             }
-            col += 1;
-            i += 1;
         }
     }
 
-    // Trim trailing spaces
+    out_raw_consumed.* = @intCast(raw.len);
+    // Trim trailing spaces (start from N_COLS, not col, to handle \r resets correctly)
     var len: u32 = N_COLS;
     while (len > 0 and out_chars[len - 1] == ' ') {
         len -= 1;
@@ -446,12 +534,74 @@ fn addScreenLine(chars: []const u8, colors: []const Color) void {
     num_screen_lines += 1;
 }
 
+fn appendToLastScreenLine(chars: []const u8, colors: []const Color) void {
+    if (num_screen_lines == 0) return;
+    const idx = num_screen_lines - 1;
+    var col = screen_line_lengths[idx];
+    for (chars, colors) |c, color| {
+        if (col >= N_COLS) break;
+        screen_lines[idx][col] = c;
+        screen_line_colors[idx][col] = color;
+        col += 1;
+    }
+    screen_line_lengths[idx] = @min(col, N_COLS);
+    screen_line_ages[idx] = 0;
+}
+
 fn addLineWithWrap(raw: []const u8) void {
+    // Detect command prompt: a line containing "[pris:/dir]" followed by "> "
+    // Split into two visual lines: "...[pris:/dir]" and "> ", then set
+    // pending_command so the next log entry is appended after the "> ".
+    if (std.mem.indexOf(u8, raw, "[pris:")) |pi| {
+        var split: usize = pi + 6;
+        while (split < raw.len and raw[split] != ']') : (split += 1) {}
+        if (split < raw.len) {
+            var proc_chars: [N_COLS]u8 = undefined;
+            var proc_colors: [N_COLS]Color = undefined;
+            var proc_len: u32 = 0;
+            var consumed: u32 = 0;
+            processContent(raw[0 .. split + 1], &proc_chars, &proc_colors, &proc_len, &consumed);
+            addScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len]);
+
+            // Parse content after ']' to get actual '>' color
+            var gt_color: Color = .default;
+            if (split + 1 < raw.len) {
+                var gt_chars: [N_COLS]u8 = undefined;
+                var gt_colors: [N_COLS]Color = undefined;
+                var gt_len: u32 = 0;
+                var gt_consumed: u32 = 0;
+                processContent(raw[split + 1 ..], &gt_chars, &gt_colors, &gt_len, &gt_consumed);
+                if (gt_len > 0) gt_color = gt_colors[0];
+            }
+            const prompt_line_chars: [2]u8 = .{ '>', ' ' };
+            const prompt_line_colors: [2]Color = .{ gt_color, .default };
+            addScreenLine(&prompt_line_chars, &prompt_line_colors);
+
+            pending_command = true;
+            return;
+        }
+    }
+
     var proc_chars: [N_COLS]u8 = undefined;
     var proc_colors: [N_COLS]Color = undefined;
     var proc_len: u32 = 0;
-    processContent(raw, &proc_chars, &proc_colors, &proc_len);
-    addScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len]);
+
+    if (pending_command) {
+        var consumed: u32 = 0;
+        processContent(raw, &proc_chars, &proc_colors, &proc_len, &consumed);
+        appendToLastScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len]);
+        pending_command = false;
+        return;
+    }
+
+    var offset: usize = 0;
+    while (offset < raw.len) {
+        var consumed: u32 = 0;
+        processContent(raw[offset..], &proc_chars, &proc_colors, &proc_len, &consumed);
+        addScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len]);
+        if (consumed == 0) break;
+        offset += @as(usize, consumed);
+    }
 }
 
 // --- Timestamp / buffer parsing (unchanged) ---
@@ -622,6 +772,7 @@ fn resetForReplay() void {
     first_line_timestamp_ms = 0;
     reached_end = false;
     run_start_epoch_ms = 0; // Will be set on next processFrame
+    pending_command = false;
 }
 
 fn renderScreen() void {
