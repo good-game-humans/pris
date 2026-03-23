@@ -1167,6 +1167,7 @@ export _PIP_STANDALONE_CERT=/etc/pki/tls/certs/ca-bundle.crt
 
 # End /etc/profile.d/pythoncerts.sh
 EOF'
+    cmd 'cd /sources'
     cmd 'rm -rf make-ca-1.16.1'
     place_marker "make-ca"
 fi
@@ -1182,6 +1183,26 @@ make'
     cmd 'cd /sources'
     cmd 'rm -rf wget-1.25.0'
     place_marker "wget"
+fi
+
+if ! marker_exists "lfs-release" ; then
+    cmd 'echo 12.4 > /etc/lfs-release'
+    cmd 'cat > /etc/lsb-release << "EOF"
+DISTRIB_ID="Linux From Scratch"
+DISTRIB_RELEASE="12.4"
+DISTRIB_CODENAME="pris"
+DISTRIB_DESCRIPTION="Linux From Scratch"
+EOF'
+    cmd 'cat > /etc/os-release << "EOF"
+NAME="Linux From Scratch"
+VERSION="12.4"
+ID=lfs
+PRETTY_NAME="Linux From Scratch 12.4"
+VERSION_CODENAME="pris"
+HOME_URL="https://www.linuxfromscratch.org/lfs/"
+RELEASE_TYPE="stable"
+EOF'
+    place_marker "lfs-release"
 fi
 
 logout

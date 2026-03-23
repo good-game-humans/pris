@@ -8,7 +8,7 @@ LOG_FILE="$PRIS_DIR/setup/aws/pris.log"
 BOOT_DIR="$PRIS_DIR/setup/aws/pris-boot"
 
 cat << 'EOF'
-Starting QEMU with installed Arch Linux kernel...
+Starting QEMU with pris kernel...
 Serial console enabled - output will appear below.
 Login: root (password set during install)
 ---
