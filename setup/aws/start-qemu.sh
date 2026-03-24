@@ -24,4 +24,4 @@ exec qemu-system-x86_64 \
   -nic user,hostfwd=tcp::2222-:22 \
   -serial stdio \
   -display none \
-  2>&1 | ts '[pris %.s] ' | tee "$LOG_FILE"
+  2>&1 | ts '[pris %.s]' | tee "$LOG_FILE"
