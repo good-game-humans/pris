@@ -274,6 +274,7 @@ sudo mount /dev/nbd0 /mnt/pris-scripts
 sudo cp ~/pris/code/pris-rebuild/* /mnt/pris-scripts/
 sudo chmod +x /mnt/pris-scripts/*.sh
 sudo mkdir -p /mnt/pris-scripts/markers
+sudo chmod o+w /mnt/pris-scripts/markers  # lfs user must be able to write markers
 sudo umount /mnt/pris-scripts
 sudo qemu-nbd -d /dev/nbd0
 ```

@@ -1,8 +1,9 @@
 const std = @import("std");
 
-const CHUNK_SIZE = 24000;
-const POLL_NS    = 500 * std.time.ns_per_ms;
-const END_MARKER = "-=END=-";
+const CHUNK_SIZE   = 24000;
+const POLL_NS      = 500 * std.time.ns_per_ms;
+const IDLE_FLUSHES = 4; // flush partial buffer after this many consecutive idle polls
+const END_MARKER   = "-=END=-";
 
 const State = struct { offset: u64, chunk: u32 };
 
@@ -88,6 +89,7 @@ pub fn main() !void {
     defer buf.deinit(alloc);
 
     var read_buf: [65536]u8 = undefined;
+    var idle_polls: u32 = 0;
 
     while (true) {
         const file = std.fs.openFileAbsolute(build_log, .{}) catch {
@@ -100,10 +102,20 @@ pub fn main() !void {
         const n = try file.read(&read_buf);
 
         if (n == 0) {
+            idle_polls += 1;
+            if (idle_polls >= IDLE_FLUSHES and buf.items.len > 0) {
+                try writeChunk(output_dir, buf.items, state.chunk);
+                state.offset += buf.items.len;
+                state.chunk  += 1;
+                try saveState(state_file, state.offset, state.chunk);
+                buf.shrinkRetainingCapacity(0);
+                idle_polls = 0;
+            }
             std.Thread.sleep(POLL_NS);
             continue;
         }
 
+        idle_polls = 0;
         try buf.appendSlice(alloc, read_buf[0..n]);
 
         // End marker — flush everything and exit
