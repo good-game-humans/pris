@@ -126,6 +126,7 @@ var chunk_buffers: [NUM_BUFFERS][MAX_CHUNK_SZ]u8 = undefined;
 var buffer_lengths: [NUM_BUFFERS]u32 = .{ 0, 0, 0, 0 };
 var buffer_states: [NUM_BUFFERS]BufferState = .{ .empty, .empty, .empty, .empty };
 var read_buffer_idx: u32 = 0;
+var write_buffer_idx: u32 = 0;
 var read_pos: u32 = 0; // position within current buffer
 
 // Timing
@@ -762,6 +763,7 @@ fn resetForReplay() void {
     }
 
     read_buffer_idx = 0;
+    write_buffer_idx = 0;
     read_pos = 0;
     for (0..NUM_BUFFERS) |i| {
         buffer_states[i] = .empty;
@@ -845,6 +847,9 @@ export fn init() void {
         buffer_states[i] = .empty;
         buffer_lengths[i] = 0;
     }
+    read_buffer_idx = 0;
+    write_buffer_idx = 0;
+    read_pos = 0;
 
     unknown_color_encountered = false;
 }
@@ -859,41 +864,24 @@ export fn initTiming(start_ms: u64, duration_ms: u64, now_ms: u64) void {
 }
 
 export fn getWriteBufferPtr() [*]u8 {
-    // Find first empty buffer
-    for (0..NUM_BUFFERS) |i| {
-        if (buffer_states[i] == .empty) {
-            return &chunk_buffers[i];
-        }
-    }
-    return &chunk_buffers[0]; // Fallback
+    return &chunk_buffers[write_buffer_idx];
 }
 
 export fn getWriteBufferIndex() u32 {
-    for (0..NUM_BUFFERS) |i| {
-        if (buffer_states[i] == .empty) {
-            return @intCast(i);
-        }
-    }
-    return 0;
+    return write_buffer_idx;
 }
 
 export fn markBufferReady(index: u32, len: u32) void {
     if (index < NUM_BUFFERS) {
         buffer_lengths[index] = len;
         buffer_states[index] = .ready;
+        write_buffer_idx = (write_buffer_idx + 1) % NUM_BUFFERS;
     }
 }
 
 export fn needsBuffer() bool {
-    // Check if any buffer is empty and we haven't reached end
     if (reached_end and manifest_duration_ms == 0) return false;
-
-    for (0..NUM_BUFFERS) |i| {
-        if (buffer_states[i] == .empty) {
-            return true;
-        }
-    }
-    return false;
+    return buffer_states[write_buffer_idx] == .empty;
 }
 
 export fn processFrame(now_ms: u64) void {
