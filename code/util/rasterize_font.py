@@ -14,7 +14,7 @@ except ImportError:
     sys.exit(1)
 
 # Configuration
-FONT_PATH = Path(__file__).parent.parent.parent / "fonts/VictorMonoAll/TTF/VictorMono-Regular.ttf"
+FONT_PATH = Path("/System/Library/Fonts/SFNSMono.ttf")
 FONT_SIZE = 16
 CHARS = "".join(chr(c) for c in range(32, 127))  # ASCII 32-126
 
