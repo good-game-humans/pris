@@ -82,8 +82,8 @@ const color_normal: [N_COLORS]u32 = .{
 };
 
 // Other colors (RGB format)
-pub const SCRN_RGB: u32 = 0x2B4D59;
-pub const BORDER_RGB: u32 = 0x3A5C61;
+pub const SCRN_RGB: u32 = 0x1A2528;
+pub const BORDER_RGB: u32 = 0x23322D;
 pub const CURSOR_RGB: u32 = 0xFF0000;
 
 // Rounded corner data (ported from original Java Pipe.java)
@@ -108,10 +108,10 @@ const corner_pix: [CORNER_W * CORNER_H]u8 = .{
     14,12,22,22,22,22,22,22,22,22,22,22,22,22,22,
 };
 const corner_rgb: [23]u32 = .{
-    0x35555C, 0x325156, 0x2F494E, 0x2E505B, 0x2F515B, 0x2C4F5A,
-    0x38595E, 0x34545B, 0x335359, 0x395B60, 0x35575E, 0x2D454B,
-    0x2C4E59, 0x2D454A, 0x395B61, 0x2D505B, 0x385A5F, 0x34565D,
-    0x385B60, 0x35575D, 0x32545C, 0x2B3E43, 0x2B4D59,
+    0x202C2A, 0x1E2826, 0x1C2221, 0x1C2829, 0x1C2829, 0x1B2729,
+    0x222F2B, 0x1F2B29, 0x1F2A28, 0x22312C, 0x202E2B, 0x1B1E1F,
+    0x1B2628, 0x1B1E1E, 0x22312D, 0x1B2829, 0x22302C, 0x1F2D2B,
+    0x22312C, 0x202E2B, 0x1E2B2A, 0x10181A, 0x1A2528,
 };
 
 pub const N_FADE_STEPS: u32 = 25;
