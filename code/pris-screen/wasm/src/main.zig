@@ -50,6 +50,27 @@ const color_bright: [N_COLORS]u32 = .{
     0x55FFFF, // cyan    (SGR 36)
     0xFFFFFF, // white   (SGR 37)
     0x555555, // black   (SGR 30)
+    0xAAAAAA, // br_black  (SGR 90)
+    0xFF8888, // br_red    (SGR 91)
+    0x88FF88, // br_green  (SGR 92)
+    0xFFFF88, // br_yellow (SGR 93)
+    0x9999FF, // br_blue   (SGR 94)
+    0xFF88FF, // br_magenta(SGR 95)
+    0x88FFFF, // br_cyan   (SGR 96)
+    0xFFFFFF, // br_white  (SGR 97)
+};
+const color_normal: [N_COLORS]u32 = .{
+    0xC0C0C0, // default
+    0xC0C0C0, // bold
+    0xC04848, // red     (SGR 31)
+    0x48C048, // green   (SGR 32)
+    0x1787C4, // arch    (38;2;23;147;209)
+    0xC0A848, // yellow  (SGR 33)
+    0x4848C0, // blue    (SGR 34)
+    0xC048C0, // magenta (SGR 35)
+    0x48B0B0, // cyan    (SGR 36)
+    0xC0C0C0, // white   (SGR 37)
+    0x333333, // black   (SGR 30)
     0x888888, // br_black  (SGR 90)
     0xFF5555, // br_red    (SGR 91)
     0x55FF55, // br_green  (SGR 92)
@@ -59,32 +80,11 @@ const color_bright: [N_COLORS]u32 = .{
     0x55FFFF, // br_cyan   (SGR 96)
     0xFFFFFF, // br_white  (SGR 97)
 };
-const color_normal: [N_COLORS]u32 = .{
-    0xC0C0C0, // default
-    0xC0C0C0, // bold
-    0x803030, // red     (SGR 31)
-    0x308030, // green   (SGR 32)
-    0x0F5A8A, // arch    (38;2;23;147;209)
-    0x807030, // yellow  (SGR 33)
-    0x3030A0, // blue    (SGR 34)
-    0x803080, // magenta (SGR 35)
-    0x307878, // cyan    (SGR 36)
-    0xC0C0C0, // white   (SGR 37)
-    0x333333, // black   (SGR 30)
-    0x555555, // br_black  (SGR 90)
-    0x803030, // br_red    (SGR 91)
-    0x308030, // br_green  (SGR 92)
-    0x807030, // br_yellow (SGR 93)
-    0x3030A0, // br_blue   (SGR 94)
-    0x803080, // br_magenta(SGR 95)
-    0x307878, // br_cyan   (SGR 96)
-    0xC0C0C0, // br_white  (SGR 97)
-};
 
 // Other colors (RGB format)
 pub const SCRN_RGB: u32 = 0x1A2528;
 pub const BORDER_RGB: u32 = 0x23322D;
-pub const CURSOR_RGB: u32 = 0xFF0000;
+pub const CURSOR_RGB: u32 = 0xCC0000;
 
 // Rounded corner data (ported from original Java Pipe.java)
 // Index 21 = outer background, index 22 = screen interior (SCRN_RGB)
