@@ -410,23 +410,31 @@ fn handleCsi(
     }
 }
 
+const ColorState = struct {
+    color: Color = .default,
+    bold: bool = false,
+};
+
 // Process raw content bytes containing ANSI escape sequences into parallel
 // char and Color arrays of length N_COLS. Trailing spaces are trimmed.
 // Sets out_raw_consumed to the number of raw bytes consumed; stops at N_COLS
 // visible characters so the caller can wrap by re-invoking with the remainder.
+// color_state is read on entry and updated on exit, allowing callers to carry
+// color across multiple wrapped segments of the same logical line.
 fn processContent(
     raw: []const u8,
     out_chars: *[N_COLS]u8,
     out_colors: *[N_COLS]Color,
     out_len: *u32,
     out_raw_consumed: *u32,
+    color_state: *ColorState,
 ) void {
     @memset(out_chars, ' ');
     @memset(out_colors, Color.default);
 
     var col: u32 = 0;
-    var cur_color: Color = .default;
-    var cur_bold: bool = false;
+    var cur_color: Color = color_state.color;
+    var cur_bold: bool = color_state.bold;
     var i: usize = 0;
 
     while (i < raw.len) {
@@ -493,6 +501,8 @@ fn processContent(
             } else {
                 // Line full — stop here so caller can wrap
                 out_raw_consumed.* = @intCast(i);
+                color_state.color = cur_color;
+                color_state.bold = cur_bold;
                 var len: u32 = N_COLS;
                 while (len > 0 and out_chars[len - 1] == ' ') len -= 1;
                 out_len.* = len;
@@ -502,6 +512,8 @@ fn processContent(
     }
 
     out_raw_consumed.* = @intCast(raw.len);
+    color_state.color = cur_color;
+    color_state.bold = cur_bold;
     // Trim trailing spaces (start from N_COLS, not col, to handle \r resets correctly)
     var len: u32 = N_COLS;
     while (len > 0 and out_chars[len - 1] == ' ') {
@@ -561,7 +573,8 @@ fn addLineWithWrap(raw: []const u8) void {
             var proc_colors: [N_COLS]Color = undefined;
             var proc_len: u32 = 0;
             var consumed: u32 = 0;
-            processContent(raw[0 .. split + 1], &proc_chars, &proc_colors, &proc_len, &consumed);
+            var prompt_state = ColorState{};
+            processContent(raw[0 .. split + 1], &proc_chars, &proc_colors, &proc_len, &consumed, &prompt_state);
             addScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len]);
 
             // Parse content after ']' to get actual '>' color
@@ -571,7 +584,8 @@ fn addLineWithWrap(raw: []const u8) void {
                 var gt_colors: [N_COLS]Color = undefined;
                 var gt_len: u32 = 0;
                 var gt_consumed: u32 = 0;
-                processContent(raw[split + 1 ..], &gt_chars, &gt_colors, &gt_len, &gt_consumed);
+                var gt_state = ColorState{};
+                processContent(raw[split + 1 ..], &gt_chars, &gt_colors, &gt_len, &gt_consumed, &gt_state);
                 if (gt_len > 0) gt_color = gt_colors[0];
             }
             const prompt_line_chars: [2]u8 = .{ '>', ' ' };
@@ -589,16 +603,18 @@ fn addLineWithWrap(raw: []const u8) void {
 
     if (pending_command) {
         var consumed: u32 = 0;
-        processContent(raw, &proc_chars, &proc_colors, &proc_len, &consumed);
+        var cmd_state = ColorState{};
+        processContent(raw, &proc_chars, &proc_colors, &proc_len, &consumed, &cmd_state);
         appendToLastScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len]);
         pending_command = false;
         return;
     }
 
     var offset: usize = 0;
+    var color_state = ColorState{};
     while (offset < raw.len) {
         var consumed: u32 = 0;
-        processContent(raw[offset..], &proc_chars, &proc_colors, &proc_len, &consumed);
+        processContent(raw[offset..], &proc_chars, &proc_colors, &proc_len, &consumed, &color_state);
         addScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len]);
         if (consumed == 0) break;
         offset += @as(usize, consumed);
