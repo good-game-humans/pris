@@ -14,6 +14,13 @@ setup/local/*.qcow2
 setup/local/arch-boot/
 setup/local/*.log
 setup/aws/arch-boot/
+setup/aws/*.qcow2
+setup/aws/pris-boot/
+setup/*.log
+
+# Ignore pris-screen chunk data directories
+code/pris-screen/data
+code/pris-screen/data.*/
 
 # Ignore build artifacts in code
 code/**/node_modules/
