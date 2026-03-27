@@ -142,6 +142,14 @@ async function init(): Promise<void> {
   canvas = document.getElementById('terminal') as HTMLCanvasElement;
   canvas.width = wasm.getScreenWidth();
   canvas.height = wasm.getScreenHeight();
+  function fitCanvas(): void {
+    const pad = 16;
+    const scale = Math.min((window.innerWidth - pad * 2) / canvas!.width, (window.innerHeight - pad * 2) / canvas!.height);
+    canvas!.style.width = `${Math.floor(canvas!.width * scale)}px`;
+    canvas!.style.height = `${Math.floor(canvas!.height * scale)}px`;
+  }
+  fitCanvas();
+  window.addEventListener('resize', fitCanvas);
   ctx = canvas.getContext('2d');
 
   if (!ctx) {
