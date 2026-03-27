@@ -60,16 +60,16 @@ const color_bright: [N_COLORS]u32 = .{
     0xFFFFFF, // br_white  (SGR 97)
 };
 const color_normal: [N_COLORS]u32 = .{
-    0xC0C0C0, // default
-    0xC0C0C0, // bold
-    0xC04848, // red     (SGR 31)
-    0x48C048, // green   (SGR 32)
+    0xCCCCCC, // default
+    0xCCCCCC, // bold
+    0xDD5555, // red     (SGR 31)
+    0x55DD55, // green   (SGR 32)
     0x1787C4, // arch    (38;2;23;147;209)
-    0xC0A848, // yellow  (SGR 33)
-    0x4848C0, // blue    (SGR 34)
-    0xC048C0, // magenta (SGR 35)
-    0x48B0B0, // cyan    (SGR 36)
-    0xC0C0C0, // white   (SGR 37)
+    0xDDBB55, // yellow  (SGR 33)
+    0x5555DD, // blue    (SGR 34)
+    0xDD55DD, // magenta (SGR 35)
+    0x55CCCC, // cyan    (SGR 36)
+    0xCCCCCC, // white   (SGR 37)
     0x333333, // black   (SGR 30)
     0x888888, // br_black  (SGR 90)
     0xFF5555, // br_red    (SGR 91)
@@ -159,6 +159,7 @@ var unknown_color_encountered: bool = false;
 const MAX_SCREEN_LINES: u32 = N_ROWS;
 var screen_lines: [MAX_SCREEN_LINES][N_COLS]u8 = undefined;
 var screen_line_colors: [MAX_SCREEN_LINES][N_COLS]Color = undefined;
+var screen_line_bold: [MAX_SCREEN_LINES][N_COLS]bool = undefined;
 var screen_line_lengths: [MAX_SCREEN_LINES]u32 = undefined;
 var screen_line_ages: [MAX_SCREEN_LINES]u32 = undefined;
 var num_screen_lines: u32 = 0;
@@ -256,10 +257,10 @@ fn fillRect(x: u32, y: u32, w: u32, h: u32, rgb: u32) void {
     }
 }
 
-fn drawChar(c: u8, x: u32, y: u32, rgb: u32) void {
+fn drawChar(c: u8, x: u32, y: u32, rgb: u32, bold: bool) void {
     if (c < 32 or c > 126) return;
     const idx: usize = c - 32;
-    const char_data = font.font_data[idx];
+    const char_data = if (bold) font.font_data_bold[idx] else font.font_data[idx];
 
     for (0..font.FONT_H) |row| {
         for (0..font.FONT_W) |col| {
@@ -315,10 +316,8 @@ fn parseSgr(params: []const u8, cur_color: *Color, cur_bold: *bool) void {
                 cur_color.* = .default;
                 cur_bold.* = false;
             },
-            1 => {
-                cur_bold.* = true;
-                cur_color.* = .bold;
-            },
+            1 => cur_bold.* = true,
+            22 => cur_bold.* = false,
             30 => cur_color.* = .black,
             31 => cur_color.* = .red,
             32 => cur_color.* = .green,
@@ -425,12 +424,14 @@ fn processContent(
     raw: []const u8,
     out_chars: *[N_COLS]u8,
     out_colors: *[N_COLS]Color,
+    out_bold: *[N_COLS]bool,
     out_len: *u32,
     out_raw_consumed: *u32,
     color_state: *ColorState,
 ) void {
     @memset(out_chars, ' ');
     @memset(out_colors, Color.default);
+    @memset(out_bold, false);
 
     var col: u32 = 0;
     var cur_color: Color = color_state.color;
@@ -496,6 +497,7 @@ fn processContent(
             if (col < N_COLS) {
                 out_chars[col] = c;
                 out_colors[col] = cur_color;
+                out_bold[col] = cur_bold;
                 col += 1;
                 i += 1;
             } else {
@@ -531,30 +533,33 @@ fn scrollUp() void {
         screen_line_ages[i] = screen_line_ages[i + 1];
         @memcpy(&screen_lines[i], &screen_lines[i + 1]);
         @memcpy(&screen_line_colors[i], &screen_line_colors[i + 1]);
+        @memcpy(&screen_line_bold[i], &screen_line_bold[i + 1]);
     }
     num_screen_lines -= 1;
 }
 
-fn addScreenLine(chars: []const u8, colors: []const Color) void {
+fn addScreenLine(chars: []const u8, colors: []const Color, bolds: []const bool) void {
     while (num_screen_lines >= MAX_SCREEN_LINES) {
         scrollUp();
     }
     const copy_len = @min(chars.len, N_COLS);
     @memcpy(screen_lines[num_screen_lines][0..copy_len], chars[0..copy_len]);
     @memcpy(screen_line_colors[num_screen_lines][0..copy_len], colors[0..copy_len]);
+    @memcpy(screen_line_bold[num_screen_lines][0..copy_len], bolds[0..copy_len]);
     screen_line_lengths[num_screen_lines] = @intCast(copy_len);
     screen_line_ages[num_screen_lines] = 0;
     num_screen_lines += 1;
 }
 
-fn appendToLastScreenLine(chars: []const u8, colors: []const Color) void {
+fn appendToLastScreenLine(chars: []const u8, colors: []const Color, bolds: []const bool) void {
     if (num_screen_lines == 0) return;
     const idx = num_screen_lines - 1;
     var col = screen_line_lengths[idx];
-    for (chars, colors) |c, color| {
+    for (chars, colors, bolds) |c, color, bold| {
         if (col >= N_COLS) break;
         screen_lines[idx][col] = c;
         screen_line_colors[idx][col] = color;
+        screen_line_bold[idx][col] = bold;
         col += 1;
     }
     screen_line_lengths[idx] = @min(col, N_COLS);
@@ -571,26 +576,29 @@ fn addLineWithWrap(raw: []const u8) void {
         if (split < raw.len) {
             var proc_chars: [N_COLS]u8 = undefined;
             var proc_colors: [N_COLS]Color = undefined;
+            var proc_bolds: [N_COLS]bool = undefined;
             var proc_len: u32 = 0;
             var consumed: u32 = 0;
             var prompt_state = ColorState{};
-            processContent(raw[0 .. split + 1], &proc_chars, &proc_colors, &proc_len, &consumed, &prompt_state);
-            addScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len]);
+            processContent(raw[0 .. split + 1], &proc_chars, &proc_colors, &proc_bolds, &proc_len, &consumed, &prompt_state);
+            addScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len], proc_bolds[0..proc_len]);
 
             // Parse content after ']' to get actual '>' color
             var gt_color: Color = .default;
             if (split + 1 < raw.len) {
                 var gt_chars: [N_COLS]u8 = undefined;
                 var gt_colors: [N_COLS]Color = undefined;
+                var gt_bolds: [N_COLS]bool = undefined;
                 var gt_len: u32 = 0;
                 var gt_consumed: u32 = 0;
                 var gt_state = ColorState{};
-                processContent(raw[split + 1 ..], &gt_chars, &gt_colors, &gt_len, &gt_consumed, &gt_state);
+                processContent(raw[split + 1 ..], &gt_chars, &gt_colors, &gt_bolds, &gt_len, &gt_consumed, &gt_state);
                 if (gt_len > 0) gt_color = gt_colors[0];
             }
             const prompt_line_chars: [2]u8 = .{ '>', ' ' };
             const prompt_line_colors: [2]Color = .{ gt_color, .default };
-            addScreenLine(&prompt_line_chars, &prompt_line_colors);
+            const prompt_line_bolds: [2]bool = .{ false, false };
+            addScreenLine(&prompt_line_chars, &prompt_line_colors, &prompt_line_bolds);
 
             pending_command = true;
             return;
@@ -599,13 +607,14 @@ fn addLineWithWrap(raw: []const u8) void {
 
     var proc_chars: [N_COLS]u8 = undefined;
     var proc_colors: [N_COLS]Color = undefined;
+    var proc_bolds: [N_COLS]bool = undefined;
     var proc_len: u32 = 0;
 
     if (pending_command) {
         var consumed: u32 = 0;
         var cmd_state = ColorState{};
-        processContent(raw, &proc_chars, &proc_colors, &proc_len, &consumed, &cmd_state);
-        appendToLastScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len]);
+        processContent(raw, &proc_chars, &proc_colors, &proc_bolds, &proc_len, &consumed, &cmd_state);
+        appendToLastScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len], proc_bolds[0..proc_len]);
         pending_command = false;
         return;
     }
@@ -614,8 +623,8 @@ fn addLineWithWrap(raw: []const u8) void {
     var color_state = ColorState{};
     while (offset < raw.len) {
         var consumed: u32 = 0;
-        processContent(raw[offset..], &proc_chars, &proc_colors, &proc_len, &consumed, &color_state);
-        addScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len]);
+        processContent(raw[offset..], &proc_chars, &proc_colors, &proc_bolds, &proc_len, &consumed, &color_state);
+        addScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len], proc_bolds[0..proc_len]);
         if (consumed == 0) break;
         offset += @as(usize, consumed);
     }
@@ -776,6 +785,7 @@ fn resetForReplay() void {
         screen_line_lengths[i] = 0;
         screen_line_ages[i] = N_FADE_STEPS;
         @memset(&screen_line_colors[i], Color.default);
+        @memset(&screen_line_bold[i], false);
     }
 
     read_buffer_idx = 0;
@@ -795,7 +805,7 @@ fn resetForReplay() void {
 
 fn renderScreen() void {
     // Clear text area
-    fillRect(TEXT_X, TEXT_Y, CHAR_W * N_COLS, LINE_H * N_ROWS, SCRN_RGB);
+    fillRect(TEXT_X, TEXT_Y, CHAR_W * N_COLS + 1, LINE_H * N_ROWS, SCRN_RGB);
 
     // Draw lines with per-character color
     for (0..num_screen_lines) |i| {
@@ -809,7 +819,7 @@ fn renderScreen() void {
                 color_normal[ci]
             else
                 fade_colors[ci][age];
-            drawChar(screen_lines[i][j], TEXT_X + @as(u32, @intCast(j)) * CHAR_W, y, rgb);
+            drawChar(screen_lines[i][j], TEXT_X + @as(u32, @intCast(j)) * CHAR_W, y, rgb, screen_line_bold[i][j]);
         }
 
         if (screen_line_ages[i] < N_FADE_STEPS) {
@@ -857,6 +867,7 @@ export fn init() void {
         screen_line_lengths[i] = 0;
         screen_line_ages[i] = N_FADE_STEPS;
         @memset(&screen_line_colors[i], Color.default);
+        @memset(&screen_line_bold[i], false);
     }
 
     for (0..NUM_BUFFERS) |i| {
