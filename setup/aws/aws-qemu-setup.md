@@ -10,7 +10,9 @@ QEMU virtualized environment for building Linux From Scratch (LFS) on AWS EC2.
 sufficient RAM and KVM support to run `pacstrap` reliably. The completed qcow2 image
 is then transferred to EC2.
 
-## Setup Steps
+## Initial Bootstrap
+
+To build the first version of the pris image, use Arch Linux distribution.
 
 ### 1. Install QEMU and dependencies
 ```bash
