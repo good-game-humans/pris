@@ -1,8 +1,8 @@
 const std = @import("std");
 
-const CHUNK_SIZE   = 24000;
+const CHUNK_SIZE   = 4800; // MAX_CHUNK_SZ in pris-screen
 const POLL_NS      = 500 * std.time.ns_per_ms;
-const IDLE_FLUSHES = 4; // flush partial buffer after this many consecutive idle polls
+const IDLE_FLUSHES = 3; // flush partial buffer after this many consecutive idle polls
 const END_MARKER   = "-=END=-";
 
 const State = struct { offset: u64, chunk: u32 };
@@ -63,8 +63,8 @@ fn appendChunkTime(
 fn writeChunk(output_dir: []const u8, data: []const u8, num: u32) !void {
     var path_buf: [512]u8 = undefined;
     var tmp_buf:  [512]u8 = undefined;
-    const path = try std.fmt.bufPrint(&path_buf, "{s}/pris-lines-{d:0>6}.txt", .{ output_dir, num });
-    const tmp  = try std.fmt.bufPrint(&tmp_buf,  "{s}/pris-lines-{d:0>6}.tmp", .{ output_dir, num });
+    const path = try std.fmt.bufPrint(&path_buf, "{s}/pris-lines-{d:0>8}.txt", .{ output_dir, num });
+    const tmp  = try std.fmt.bufPrint(&tmp_buf,  "{s}/pris-lines-{d:0>8}.tmp", .{ output_dir, num });
     {
         const file = try std.fs.createFileAbsolute(tmp, .{});
         defer file.close();
