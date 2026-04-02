@@ -36,6 +36,30 @@ fn saveState(state_file: []const u8, offset: u64, chunk: u32) !void {
     try std.fs.renameAbsolute(tmp, state_file);
 }
 
+fn extractFirstTimestamp(data: []const u8) []const u8 {
+    const prefix = "[pris ";
+    const start = std.mem.indexOf(u8, data, prefix) orelse return "";
+    const ts_start = start + prefix.len;
+    const ts_end = std.mem.indexOfScalarPos(u8, data, ts_start, ']') orelse return "";
+    return data[ts_start..ts_end];
+}
+
+fn appendChunkTime(
+    output_dir: []const u8,
+    chunk_num: u32,
+    timestamp: []const u8,
+) !void {
+    if (timestamp.len == 0) return;
+    var path_buf: [512]u8 = undefined;
+    const path = try std.fmt.bufPrint(&path_buf, "{s}/chunk-times.txt", .{output_dir});
+    const file = try std.fs.createFileAbsolute(path, .{ .truncate = false });
+    defer file.close();
+    try file.seekFromEnd(0);
+    var line_buf: [128]u8 = undefined;
+    const line = try std.fmt.bufPrint(&line_buf, "{d},{s}\n", .{ chunk_num, timestamp });
+    try file.writeAll(line);
+}
+
 fn writeChunk(output_dir: []const u8, data: []const u8, num: u32) !void {
     var path_buf: [512]u8 = undefined;
     var tmp_buf:  [512]u8 = undefined;
@@ -55,7 +79,9 @@ fn flushChunk(output_dir: []const u8, state_file: []const u8, buf: *std.ArrayLis
         i + 1
     else
         CHUNK_SIZE;
+    const timestamp = extractFirstTimestamp(buf.items[0..split]);
     try writeChunk(output_dir, buf.items[0..split], state.chunk);
+    try appendChunkTime(output_dir, state.chunk, timestamp);
     state.offset += split;
     state.chunk  += 1;
     try saveState(state_file, state.offset, state.chunk);
@@ -104,7 +130,9 @@ pub fn main() !void {
         if (n == 0) {
             idle_polls += 1;
             if (idle_polls >= IDLE_FLUSHES and buf.items.len > 0) {
+                const ts = extractFirstTimestamp(buf.items);
                 try writeChunk(output_dir, buf.items, state.chunk);
+                try appendChunkTime(output_dir, state.chunk, ts);
                 state.offset += buf.items.len;
                 state.chunk  += 1;
                 try saveState(state_file, state.offset, state.chunk);
@@ -127,7 +155,9 @@ pub fn main() !void {
             while (buf.items.len >= CHUNK_SIZE) try flushChunk(output_dir, state_file, &buf, &state);
 
             if (buf.items.len > 0) {
+                const ts = extractFirstTimestamp(buf.items);
                 try writeChunk(output_dir, buf.items, state.chunk);
+                try appendChunkTime(output_dir, state.chunk, ts);
                 state.offset += buf.items.len;
                 state.chunk  += 1;
                 try saveState(state_file, state.offset, state.chunk);

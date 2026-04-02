@@ -1,6 +1,7 @@
 // Configuration
 const DATA_PATH = './data';
 const POLL_INTERVAL_MS = 100;
+const REALTIME_DELAY_MS = 5000;
 
 // Manifest
 interface Manifest {
@@ -37,6 +38,27 @@ let wasmMemory: Uint8Array | null = null;
 let currentChunk = 0;
 let fetchingChunk = false;
 let reachedEnd = false;
+
+async function findStartChunk(targetTimeSec: number): Promise<number> {
+  try {
+    const text = await fetch(`${DATA_PATH}/chunk-times.txt`).then(r => r.text());
+    const entries = text.trim().split('\n')
+      .filter(line => line.length > 0)
+      .map(line => {
+        const comma = line.indexOf(',');
+        return { chunk: parseInt(line.slice(0, comma)), ts: parseFloat(line.slice(comma + 1)) };
+      });
+    if (entries.length === 0) return 0;
+    let lo = 0, hi = entries.length - 1;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (entries[mid].ts <= targetTimeSec) lo = mid; else hi = mid - 1;
+    }
+    return entries[lo].chunk;
+  } catch {
+    return 0;
+  }
+}
 
 async function loadWasm(): Promise<PrisScreenWasm> {
   const response = await fetch('./wasm/zig-out/bin/pris-screen.wasm');
@@ -135,8 +157,15 @@ async function init(): Promise<void> {
   wasm.initTiming(
     BigInt(manifest.startTime),
     BigInt(manifest.duration ?? 0),
-    BigInt(Date.now())
+    BigInt(manifest.startTime + (manifest.mode === 'realtime' ? REALTIME_DELAY_MS : 0))
   );
+
+  // In realtime mode, seek to the chunk closest to now - REALTIME_DELAY_MS
+  if (manifest.mode === 'realtime') {
+    const targetTimeSec = (Date.now() - REALTIME_DELAY_MS) / 1000;
+    currentChunk = await findStartChunk(targetTimeSec);
+    console.log('Starting from chunk', currentChunk);
+  }
 
   // Set up canvas
   canvas = document.getElementById('terminal') as HTMLCanvasElement;

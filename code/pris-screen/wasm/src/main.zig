@@ -133,8 +133,6 @@ var read_pos: u32 = 0; // position within current buffer
 var manifest_start_ms: u64 = 0;
 var manifest_duration_ms: u64 = 0;
 var run_start_epoch_ms: u64 = 0;
-var first_line_timestamp_ms: u64 = 0;
-var have_first_timestamp: bool = false;
 var reached_end: bool = false;
 
 // Cursor
@@ -757,15 +755,9 @@ fn processPendingLines(now_ms: u64) void {
             break;
         }
 
-        // Store first timestamp as baseline
-        if (!have_first_timestamp and parsed.timestamp_ms > 0) {
-            first_line_timestamp_ms = parsed.timestamp_ms;
-            have_first_timestamp = true;
-        }
-
         // Check if it's time to display this line
-        if (parsed.timestamp_ms > 0 and have_first_timestamp) {
-            const line_offset = parsed.timestamp_ms -| first_line_timestamp_ms;
+        if (parsed.timestamp_ms > 0) {
+            const line_offset = parsed.timestamp_ms -| manifest_start_ms;
             if (line_offset > run_elapsed) {
                 break; // Not time yet
             }
@@ -796,8 +788,6 @@ fn resetForReplay() void {
         buffer_lengths[i] = 0;
     }
 
-    have_first_timestamp = false;
-    first_line_timestamp_ms = 0;
     reached_end = false;
     run_start_epoch_ms = 0; // Will be set on next processFrame
     pending_command = false;
@@ -885,8 +875,6 @@ export fn initTiming(start_ms: u64, duration_ms: u64, now_ms: u64) void {
     manifest_start_ms = start_ms;
     manifest_duration_ms = duration_ms;
     run_start_epoch_ms = now_ms;
-    have_first_timestamp = false;
-    first_line_timestamp_ms = 0;
     reached_end = false;
 }
 
