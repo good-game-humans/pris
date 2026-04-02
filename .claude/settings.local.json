@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git lola:*)",
+      "Bash(pkill:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(npm run build:*)",
+      "Bash(zig build:*)",
+      "Bash(git push:*)",
+      "Bash(zig fmt:*)",
+      "Bash(nc:*)",
+      "WebFetch(domain:www.linuxfromscratch.org)"
+    ]
+  }
+}

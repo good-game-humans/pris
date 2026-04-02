@@ -4,6 +4,9 @@
 # Except these folders
 !/code/
 !/setup/
+!/.claude/
+!/CLAUDE.md
+!/LICENSE
 !/.gitignore
 
 # Ignore macOS metadata
