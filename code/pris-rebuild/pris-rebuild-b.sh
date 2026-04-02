@@ -20,7 +20,6 @@ if ! marker_exists "lfs-user-b" ; then
 
     # Don't actually save this .bash_profile for lfs, as the `exec` will
     # replace the rebuild script given to lfs to run.
-    # TODO: Try one run without the MAKEFLAGS=-j1
     echo_prompt
     echo "cat > ~/.bash_profile << \"EOF\"
 exec env -i HOME=\$HOME TERM=\$TERM PS1='[\h:\w]\\n\033[35m>\033[0m ' /bin/bash
@@ -117,8 +116,7 @@ esac"
     cmd 'cat gcc/limitx.h gcc/glimits.h gcc/limity.h > \
   `dirname $($LFS_TGT-gcc -print-libgcc-file-name)`/include/limits.h'
     cmd 'cd $LFS/sources'
-    # TODO uncomment
-    #cmd 'rm -rf gcc-15.2.0'
+    cmd 'rm -rf gcc-15.2.0'
     place_marker "tools-gcc-pass1"
 fi
 
@@ -127,7 +125,6 @@ if ! marker_exists "tools-linux-headers" ; then
     cmd 'cd linux-6.16.1'
     cmd 'make mrproper'
     cmd 'make headers'
-    # TODO: check this
     cmd "find usr/include -type f ! -name '*.h' -delete"
     cmd 'cp -rv usr/include $LFS/usr'
     cmd 'cd $LFS/sources'
@@ -496,4 +493,4 @@ esac"
     place_marker "tools-gcc-pass2"
 fi
 
-exit
+cmd 'exit'

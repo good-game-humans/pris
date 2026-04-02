@@ -4,6 +4,8 @@
 
 source "/pris/pris-fns.sh"
 
+stty cols 120
+
 if ! marker_exists "init" ; then
     cmd 'export LFS=/mnt/lfs'
     cmd 'umask 022'
@@ -224,3 +226,31 @@ chroot "$LFS" /usr/bin/env -i   \
     MAKEFLAGS="-j$(nproc)"      \
     TESTSUITEFLAGS="-j$(nproc)" \
     /bin/bash --login "${PRIS_DIR}/pris-rebuild-c.sh"
+
+# Build complete.
+# For the following command, need to run a slightly different version to send complete lines,
+# in order to be flushed to the log.
+echo_cmd "COLS=\$(tput cols)
+printf '%*s\\n' \"\$COLS\" '' | tr ' ' '='
+END=\$(( \$(date +%s) + 86400 ))
+while [ \$(date +%s) -lt \$END ]; do
+    R=\$(( END - \$(date +%s) ))
+    printf '\r%-20s%*sReboot in %02d:%02d' \\
+        'COMPILATION COMPLETE' \$(( COLS - 35 )) '' \\
+            \$(( R/3600 )) \$(( (R%3600)/60 ))
+    sleep 60
+done
+unset R END COLS
+echo"
+
+COLS=$(tput cols)
+printf '%*s\n' "$COLS" '' | tr ' ' '='
+END=$(( $(date +%s) + 86400 ))
+while [ $(date +%s) -lt $END ]; do
+    R=$(( END - $(date +%s) ))
+    printf '%-20s%*sReboot in %02d:%02d\n' \
+        'COMPILATION COMPLETE' $(( COLS - 35 )) '' \
+            $(( R/3600 )) $(( (R%3600)/60 ))
+    sleep 60
+done
+unset R END COLS

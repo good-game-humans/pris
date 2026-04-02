@@ -105,16 +105,14 @@ ExecStart=-/sbin/agetty --autologin root --login-program /pris/pris-rebuild-a.sh
 EOF
 ```
 
-## Start Script
+## Run QEMU VM
 
-Run the `start-qemu.sh` script from a tmux session with 146 columns wide, to match
-`pris-screen`, after adding the space for the timestamp.
-
-The start script (`setup/aws/start-qemu.sh`) uses direct kernel boot:
+Invoke qemu from a tmux session with 146 columns wide, to match `pris-screen`, after adding the 
+space for the timestamp.  Note: this invocation is obsolete.
 
 ```bash
 qemu-system-x86_64 \
-  -m 2G \
+  -m 2560M \
   -smp 4 \
   -hda "$PRIS_DIR/setup/aws/lfs.qcow2" \
   -kernel "$BOOT_DIR/vmlinuz-linux" \
@@ -122,14 +120,13 @@ qemu-system-x86_64 \
   -append "root=/dev/sda1 rw console=ttyS0,115200" \
   -nic user,hostfwd=tcp::2222-:22 \
   -serial stdio \
-  -display none \
-  2>&1 | ts '[pris %.s] ' | tee "$LOG_FILE"
+  -display none
 ```
 
 Key flags:
 - `-kernel` / `-initrd`: Boot installed kernel directly (bypasses GRUB, enables serial console)
 - `-append "root=/dev/sda1 rw console=ttyS0,115200"`: Mount installed root, serial output
-- `-m 2G`: 2GB RAM (limited by EC2 instance memory)
+- `-m 2560M`: 2560MB RAM (limited by EC2 instance memory)
 - `-smp 4`: 4 virtual CPUs
 - `-nic user,hostfwd=tcp::2222-:22`: SSH port forward
 - `-serial stdio`: Connect serial to terminal
@@ -217,6 +214,62 @@ umount /mnt/pris
 shutdown -h now
 ```
 
+## Refreshing pris.qcow2
+
+If `pris.qcow2` is to be refreshed with a new version built as part of the build
+process (at `/mnt/lfs` inside the running pris.qcow2), copy it to a fresh qcow2.
+
+### 1. Create a new qcow2 on the EC2 host
+
+```bash
+qemu-img create -f qcow2 ~/pris/setup/aws/pris-new.qcow2 40G
+```
+
+### 2. Add as a third drive and reboot
+
+Add `-hdc ~/pris/setup/aws/pris-new.qcow2` to the QEMU invocation (`-hda` is
+pris.qcow2, `-hdb` is pris-scripts.qcow2). The new disk appears as `/dev/sdc`.
+
+### 3. Partition and format (inside the VM)
+
+```bash
+fdisk /dev/sdc   # n p 1 default +6G → n p 2 default +4G → t 2 82 → w
+mkfs.ext4 -L "pris" /dev/sdc1
+mkswap /dev/sdc2
+```
+
+### 4. Copy the LFS build (inside the VM)
+
+```bash
+mkdir -p /mnt/newlfs
+mount /dev/sdc1 /mnt/newlfs
+cp -a /mnt/lfs/. /mnt/newlfs/
+```
+
+### 5. Copy the LFS kernel to the EC2 host
+
+From the EC2 host:
+```bash
+scp -P 2222 root@localhost:/mnt/newlfs/boot/vmlinuz-* \
+    ~/pris/setup/aws/pris-boot/vmlinuz-pris
+```
+
+### 6. Shut down and promote the new image
+
+Inside the VM:
+```bash
+umount /mnt/newlfs
+shutdown -h now
+```
+
+On the EC2 host:
+```bash
+mv ~/pris/setup/aws/pris.qcow2 ~/pris/setup/aws/pris.qcow2.bak
+mv ~/pris/setup/aws/pris-new.qcow2 ~/pris/setup/aws/pris.qcow2
+```
+
+Remove the `-hdc` line from the QEMU invocation before the next boot.
+
 ## Output Capture for pris-screen
 
 The build output is logged with timestamps in the format:
@@ -237,8 +290,7 @@ The build output is logged with timestamps in the format:
 │       ├── lfs.qcow2               # Arch Linux bootstrap image
 │       ├── pris.qcow2              # LFS root filesystem (boots as /dev/sda)
 │       ├── pris-scripts.qcow2      # pris scripts image (mounts as /pris)
-│       ├── start-qemu.sh           # Boot script
-│       ├── pris.log                # Timestamped output log
+│       ├── run-pris.sh             # Run script
 │       └── aws-qemu-setup.md       # This file
 ```
 

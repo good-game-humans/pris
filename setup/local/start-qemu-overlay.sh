@@ -14,7 +14,7 @@ Login: root (no password)
 EOF
 
 exec qemu-system-x86_64 \
-  -m 8G \
+  -m 2G \
   -smp 4 \
   -hda "$PRIS_DIR/setup/local/lfs-overlay.qcow2" \
   -kernel "$BOOT_DIR/vmlinuz-linux" \

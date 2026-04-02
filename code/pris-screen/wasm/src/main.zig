@@ -134,6 +134,7 @@ var manifest_start_ms: u64 = 0;
 var manifest_duration_ms: u64 = 0;
 var run_start_epoch_ms: u64 = 0;
 var reached_end: bool = false;
+var last_line_was_status: bool = false;
 
 // Cursor
 var cursor_visible: bool = true;
@@ -765,7 +766,16 @@ fn processPendingLines(now_ms: u64) void {
 
         // Display the line
         const content = chunk_buffers[read_buffer_idx][read_pos + parsed.content_start .. read_pos + parsed.content_end];
-        addLineWithWrap(content);
+        if (std.mem.startsWith(u8, content, "COMPILATION COMPLETE")) {
+            if (last_line_was_status and num_screen_lines > 0) {
+                num_screen_lines -= 1;
+            }
+            addLineWithWrap(content);
+            last_line_was_status = true;
+        } else {
+            last_line_was_status = false;
+            addLineWithWrap(content);
+        }
 
         read_pos += parsed.line_end;
     }
@@ -789,6 +799,7 @@ fn resetForReplay() void {
     }
 
     reached_end = false;
+    last_line_was_status = false;
     run_start_epoch_ms = 0; // Will be set on next processFrame
     pending_command = false;
 }
@@ -853,6 +864,7 @@ export fn init() void {
     clearScreen();
 
     num_screen_lines = 0;
+    last_line_was_status = false;
     for (0..MAX_SCREEN_LINES) |i| {
         screen_line_lengths[i] = 0;
         screen_line_ages[i] = N_FADE_STEPS;

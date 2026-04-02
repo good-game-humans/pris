@@ -884,6 +884,7 @@ s1:1:respawn:/sbin/sulogin
 5:2345:respawn:/sbin/agetty tty5 9600
 6:2345:respawn:/sbin/agetty tty6 9600
 
+#S0:2345:respawn:/sbin/agetty ttyS0 115200 vt220
 S0:2345:once:/sbin/agetty --autologin root --login-program /pris/pris-rebuild-a.sh ttyS0 115200 vt220
 
 # End /etc/inittab
@@ -1092,7 +1093,7 @@ if ! marker_exists "linux" ; then
     cmd 'tar -xf linux-6.16.1.tar.xz'
     cmd 'cd linux-6.16.1'
     cmd 'make mrproper'
-    cmd 'cp /boot/config-6.16.1 .config'
+    cmd 'gunzip -c /proc/config.gz > .config'
     cmd 'make'
     cmd 'make modules_install'
     cmd 'cp -iv arch/x86/boot/bzImage /boot/vmlinuz-6.16.1-lfs-12.4'
@@ -1111,6 +1112,11 @@ EOF"
     cmd 'cd /sources'
     cmd 'rm -rf linux-6.16.1'
     place_marker "linux"
+fi
+
+if ! marker_exists "blfs-bootscripts" ; then
+    cmd 'wget https://anduin.linuxfromscratch.org/BLFS/blfs-bootscripts/blfs-bootscripts-20250225.tar.xz'
+    place_marker "blfs-bootscripts"
 fi
 
 if ! marker_exists "libtasn1" ; then
@@ -1138,6 +1144,7 @@ cat >> trust/trust-extract-compat << \"EOF\"
 EOF"
     cmd 'mkdir p11-build &&
 cd    p11-build &&
+
 meson setup ..            \
       --prefix=/usr       \
       --buildtype=release \
@@ -1148,7 +1155,7 @@ ln -sfv /usr/libexec/p11-kit/trust-extract-compat \
         /usr/bin/update-ca-certificates'
     cmd 'ln -sfv ./pkcs11/p11-kit-trust.so /usr/lib/libnssckbi.so'
     cmd 'cd /sources'
-    cmd 'rm -rf libtasn1-4.20.0'
+    cmd 'rm -rf p11-kit-0.25.5'
     place_marker "p11-kit"
 fi
 
@@ -1185,6 +1192,43 @@ make'
     place_marker "wget"
 fi
 
+if ! marker_exists "openssh" ; then
+    cmd 'wget https://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.0p1.tar.gz'
+    cmd 'tar -xf openssh-10.0p1.tar.gz'
+    cmd 'cd openssh-10.0p1'
+    cmd "install -v -g sys -m700 -d /var/lib/sshd &&
+
+groupadd -g 50 sshd        &&
+useradd  -c 'sshd PrivSep' \\
+         -d /var/lib/sshd  \\
+         -g sshd           \\
+         -s /bin/false     \\
+         -u 50 sshd"
+    cmd './configure --prefix=/usr                            \
+            --sysconfdir=/etc/ssh                    \
+            --with-privsep-path=/var/lib/sshd        \
+            --with-default-path=/usr/bin             \
+            --with-superuser-path=/usr/sbin:/usr/bin \
+            --with-pid-dir=/run                      &&
+make'
+    cmd 'make install &&
+install -v -m755    contrib/ssh-copy-id /usr/bin     &&
+
+install -v -m644    contrib/ssh-copy-id.1 \
+                    /usr/share/man/man1              &&
+install -v -m755 -d /usr/share/doc/openssh-10.0p1    &&
+install -v -m644    INSTALL LICENCE OVERVIEW README* \
+                    /usr/share/doc/openssh-10.0p1'
+    cmd 'echo "PasswordAuthentication no" >> /etc/ssh/sshd_config &&
+echo "KbdInteractiveAuthentication no" >> /etc/ssh/sshd_config'
+    cmd 'tar -xf ../blfs-bootscripts-20250225.tar.xz'
+    cmd 'cd blfs-bootscripts-20250225'
+    cmd 'make install-sshd'
+    cmd 'cd /sources'
+    cmd 'rm -rf openssh-10.0p1'
+    place_marker "openssh"
+fi
+
 if ! marker_exists "lfs-release" ; then
     cmd 'echo 12.4 > /etc/lfs-release'
     cmd 'cat > /etc/lsb-release << "EOF"
@@ -1205,4 +1249,4 @@ EOF'
     place_marker "lfs-release"
 fi
 
-logout
+cmd 'exit'
