@@ -1,12 +1,20 @@
 # pris
 
-**pris** continually rebuilds itself, from open source software. See the live display 
+**pris** continually rebuilds itself, from open source software.  See the live display 
 [here](http://161.178.136.162/pris/index.html).
+
+This is a refresh of an artwork originally created for the Whitney Museum's 
+[Artport](https://whitney.org/artport/) in 2004.  The idea is the same — a computer that 
+rebuilds itself from downloaded source code, rests for a day, then reboots and repeats. 
+This version also acknowledges changes in the tech landscape over the last 
+20 years (the move to virtual machines in the cloud, the rise of new software languages, 
+and the fall of others).
+
 
 ## How it works
 
 ```
-QEMU VM (LFS build)
+QEMU virtual machine (running pris-rebuild scripts)
   └─ serial console → pris.log
                           ↓
                  pris-chunk-writer
@@ -18,7 +26,7 @@ QEMU VM (LFS build)
               └─ pris-screen.wasm  (Zig → WASM)
 ```
 
-The serial console output from the VM is captured, split into numbered chunk
+The serial console output from the virtual machine is captured, split into numbered chunk
 files, and served to the browser. The WASM-based renderer parses ANSI escape
 codes and renders glyphs from an embedded bitmap font. In realtime mode,
 playback trails live output by 5 seconds.
@@ -33,47 +41,19 @@ playback trails live output by 5 seconds.
 | `code/pris-rebuild` | Bash | Automates the LFS build inside the QEMU guest |
 | `setup/aws` | Bash | EC2 deployment scripts |
 
-## Building
+## More
 
-**pris-chunk-writer** (cross-compile for Linux from Mac):
-```bash
-cd code/pris-chunk-writer
-zig build -Dtarget=x86_64-linux-musl
-# output: zig-out/bin/pris-chunk-writer
-```
-
-**pris-screen WASM:**
-```bash
-cd code/pris-screen/wasm
-zig build
-```
-
-**pris-screen TypeScript:**
-```bash
-cd code/pris-screen/ts
-npx tsc
-```
-
-**Regenerate font data** (requires Pillow):
-```bash
-python3 code/util/rasterize_font.py > code/pris-screen/wasm/src/font.zig
-```
-
-## Running
-
-See [`setup/aws/aws-qemu-setup.md`](setup/aws/aws-qemu-setup.md) for full
-EC2 deployment instructions. The main entry point is `setup/aws/run-pris.sh`,
-which cleans up chunk files, writes a manifest, starts `pris-chunk-writer`,
-and launches QEMU in a loop.
+For more details, including instructions on building and running, see [CLAUDE.md](CLAUDE.md).
 
 ## Credits
 
-- **Linux** — created by Linus Torvalds
+- **Linux** — originally created by Linus Torvalds, and continued by many others
 - **Open source software** — this project stands on the shoulders of the
   many open source projects and their contributors
 - **Linux From Scratch** — created by Gerard Beekmans; an invaluable guide
   to building a Linux system from the ground up
 - **San Francisco** — font by Apple
+- **Claude Code** — for being the beast that it is
 - **Whitney Museum of American Art** — commissioned the first version of
   this work
 
