@@ -1119,7 +1119,17 @@ if ! marker_exists "blfs-bootscripts" ; then
     place_marker "blfs-bootscripts"
 fi
 
-if ! marker_exists "libtasn1" ; then
+if ! marker_exists "dl-libtasn1" ; then
+    cmd 'wget --timeout=30 --tries=2 -c --progress=bar \
+    -P $LFS/sources \
+    https://ftp.gnu.org/gnu/libtasn1/libtasn1-4.20.0.tar.gz'
+    cmd '(cd $LFS/sources \
+    && echo "930f71d788cf37505a0327c1b84741be libtasn1-4.20.0.tar.gz" \
+    | md5sum -c)' \
+    && place_marker "dl-libtasn1"
+fi
+
+if marker_exists "dl-libtasn1" && ! marker_exists "libtasn1" ; then
     cmd 'tar -xf libtasn1-4.20.0.tar.gz'
     cmd 'cd libtasn1-4.20.0'
     cmd './configure --prefix=/usr --disable-static &&
@@ -1131,7 +1141,17 @@ make'
     place_marker "libtasn1"
 fi
 
-if ! marker_exists "p11-kit" ; then
+if ! marker_exists "dl-p11-kit" ; then
+    cmd 'wget --timeout=30 --tries=2 -c --progress=bar \
+    -P $LFS/sources \
+    https://github.com/p11-glue/p11-kit/releases/download/0.25.5/p11-kit-0.25.5.tar.xz'
+    cmd '(cd $LFS/sources \
+    && echo "e9c5675508fcd8be54aa4c8cb8e794fc p11-kit-0.25.5.tar.xz" \
+    | md5sum -c)' \
+    && place_marker "dl-p11-kit"
+fi
+
+if marker_exists "dl-p11-kit" && ! marker_exists "p11-kit" ; then
     cmd 'tar -xf p11-kit-0.25.5.tar.xz'
     cmd 'cd p11-kit-0.25.5'
     cmd "sed '20,\$ d' -i trust/trust-extract-compat &&
@@ -1159,7 +1179,17 @@ ln -sfv /usr/libexec/p11-kit/trust-extract-compat \
     place_marker "p11-kit"
 fi
 
-if ! marker_exists "make-ca" ; then
+if ! marker_exists "dl-make-ca" ; then
+    cmd 'wget --timeout=30 --tries=2 -c --progress=bar \
+    -P $LFS/sources \
+    https://github.com/lfs-book/make-ca/archive/v1.16.1/make-ca-1.16.1.tar.gz'
+    cmd '(cd $LFS/sources \
+    && echo "bf9cea2d24fc5344d4951b49f275c595 make-ca-1.16.1.tar.gz" \
+    | md5sum -c)' \
+    && place_marker "dl-make-ca"
+fi
+
+if marker_exists "dl-make-ca" && ! marker_exists "make-ca" ; then
     cmd 'tar -xf make-ca-1.16.1.tar.gz'
     cmd 'cd make-ca-1.16.1'
     cmd 'make install &&
@@ -1179,7 +1209,21 @@ EOF'
     place_marker "make-ca"
 fi
 
-if ! marker_exists "wget" ; then
+if ! marker_exists "dl-wget" ; then
+    cmd 'wget --timeout=30 --tries=2 -c --progress=bar \
+    -P $LFS/sources \
+    https://ftp.gnu.org/gnu/wget/wget-1.25.0.tar.gz'
+    cmd '(cd $LFS/sources \
+    && echo "c70ba58b36f944e8ba1d655ace552881 wget-1.25.0.tar.gz" \
+    | md5sum -c)' \
+    && place_marker "dl-wget"
+fi
+
+if marker_exists "libtasn1" \
+    && marker_exists "p11-kit" \
+    && marker_exists "make-ca" \
+    && marker_exists "dl-wget" \
+    && ! marker_exists "wget" ; then
     cmd 'tar -xf wget-1.25.0.tar.gz'
     cmd 'cd wget-1.25.0'
     cmd './configure --prefix=/usr      \
