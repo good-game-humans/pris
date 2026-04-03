@@ -43,6 +43,12 @@ while true; do
     sudo umount /mnt/pris-scripts-tmp
     sudo qemu-nbd -d /dev/nbd0
 
+    # Recreate overlay so each build starts from a clean pris.qcow2 state
+    qemu-img create -f qcow2 \
+        -b "$PRIS_DIR/setup/aws/pris.qcow2" \
+        -F qcow2 \
+        "$PRIS_DIR/setup/aws/pris-overlay.qcow2"
+
     # --- Write manifest ---
     START_MS=$(date +%s%3N)
     echo "{\"mode\":\"realtime\",\"startTime\":$START_MS}" \

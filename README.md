@@ -3,11 +3,11 @@
 **pris** continually rebuilds itself, from open source software.  See the live display 
 [here](http://161.178.136.162/pris/index.html).
 
-This is a refresh of an artwork originally created for the Whitney Museum's 
+This is a reprise of an artwork originally created for the Whitney Museum's 
 [Artport](https://whitney.org/artport/) in 2004.  The idea is the same — a computer that 
 rebuilds itself from downloaded source code, rests for a day, then reboots and repeats. 
-This version also acknowledges changes in the tech landscape over the last 
-20 years (the move to virtual machines in the cloud, the rise of new software languages, 
+This update also acknowledges changes in the tech landscape over the last 
+20 years (the move to virtual machines in the cloud, the rise of new software, 
 and the fall of others).
 
 

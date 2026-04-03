@@ -584,6 +584,7 @@ fn addLineWithWrap(raw: []const u8) void {
 
             // Parse content after ']' to get actual '>' color
             var gt_color: Color = .default;
+            var gt_bold: bool = false;
             if (split + 1 < raw.len) {
                 var gt_chars: [N_COLS]u8 = undefined;
                 var gt_colors: [N_COLS]Color = undefined;
@@ -593,10 +594,11 @@ fn addLineWithWrap(raw: []const u8) void {
                 var gt_state = ColorState{};
                 processContent(raw[split + 1 ..], &gt_chars, &gt_colors, &gt_bolds, &gt_len, &gt_consumed, &gt_state);
                 if (gt_len > 0) gt_color = gt_colors[0];
+                if (gt_len > 0) gt_bold = gt_bolds[0];
             }
             const prompt_line_chars: [2]u8 = .{ '>', ' ' };
             const prompt_line_colors: [2]Color = .{ gt_color, .default };
-            const prompt_line_bolds: [2]bool = .{ false, false };
+            const prompt_line_bolds: [2]bool = .{ gt_bold, false };
             addScreenLine(&prompt_line_chars, &prompt_line_colors, &prompt_line_bolds);
 
             pending_command = true;

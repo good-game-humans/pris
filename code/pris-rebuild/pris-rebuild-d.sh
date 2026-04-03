@@ -5,7 +5,7 @@ source "/pris/pris-fns.sh"
 
 # Override default prompt with chroot prompt
 PROMPT_PREPEND='(lfs chroot) '
-PROMPT='\033[31m>\033[0m'
+PROMPT='\033[1;31m>\033[0m'
 
 if ! marker_exists "libtool" ; then
     cmd 'tar -xf libtool-2.5.4.tar.xz'

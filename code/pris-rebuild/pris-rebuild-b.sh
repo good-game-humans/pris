@@ -4,7 +4,7 @@
 source "/pris/pris-fns.sh"
 
 # Override default prompt with user prompt
-PROMPT='\033[35m>\033[0m'
+PROMPT='\033[1;35m>\033[0m'
 
 export LFS=/mnt/lfs
 

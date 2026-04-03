@@ -1,7 +1,7 @@
 PRIS_DIR="/pris"
 PRIS_LOG="${PRIS_DIR}/pris.log"
 PRIS_MARKER_DIR="${PRIS_DIR}/markers"
-PROMPT='\033[31m>\033[0m'
+PROMPT='\033[1;31m>\033[0m'
 LFS_HOME='/home/lfs'
 
 ##
@@ -24,7 +24,7 @@ function place_marker {
 
 function echo_prompt {
     # Terminate with a newline even though the desired display on pris-screen 
-    printf "$PROMPT_PREPEND[pris:$PWD]$PROMPT \n"
+    printf "$PROMPT_PREPEND\033[1m[pris:$PWD]\033[0m$PROMPT \n"
 }
 
 ##
