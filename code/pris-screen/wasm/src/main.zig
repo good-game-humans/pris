@@ -19,21 +19,21 @@ const Color = enum(u8) {
     bold       = 1,
     red        = 2,   // SGR 31
     green      = 3,   // SGR 32
-    arch       = 4,   // SGR 38;2;23;147;209
-    yellow     = 5,   // SGR 33
-    blue       = 6,   // SGR 34
-    magenta    = 7,   // SGR 35
-    cyan       = 8,   // SGR 36
-    white      = 9,   // SGR 37
-    black      = 10,  // SGR 30
-    br_black   = 11,  // SGR 90
-    br_red     = 12,  // SGR 91
-    br_green   = 13,  // SGR 92
-    br_yellow  = 14,  // SGR 93
-    br_blue    = 15,  // SGR 94
-    br_magenta = 16,  // SGR 95
-    br_cyan    = 17,  // SGR 96
-    br_white   = 18,  // SGR 97
+    yellow     = 4,   // SGR 33
+    blue       = 5,   // SGR 34
+    magenta    = 6,   // SGR 35
+    cyan       = 7,   // SGR 36
+    white      = 8,   // SGR 37
+    black      = 9,   // SGR 30
+    br_black   = 10,  // SGR 90
+    br_red     = 11,  // SGR 91
+    br_green   = 12,  // SGR 92
+    br_yellow  = 13,  // SGR 93
+    br_blue    = 14,  // SGR 94
+    br_magenta = 15,  // SGR 95
+    br_cyan    = 16,  // SGR 96
+    br_white   = 17,  // SGR 97
+    arch       = 18,  // SGR 38;2;23;147;209
 };
 const N_COLORS = @typeInfo(Color).@"enum".fields.len;
 
@@ -43,7 +43,6 @@ const color_bright: [N_COLORS]u32 = .{
     0xFFFFFF, // bold
     0xFF5555, // red     (SGR 31)
     0x55FF55, // green   (SGR 32)
-    0x1793D1, // arch    (38;2;23;147;209)
     0xFFFF55, // yellow  (SGR 33)
     0x6666FF, // blue    (SGR 34)
     0xFF55FF, // magenta (SGR 35)
@@ -58,13 +57,13 @@ const color_bright: [N_COLORS]u32 = .{
     0xFF88FF, // br_magenta(SGR 95)
     0x88FFFF, // br_cyan   (SGR 96)
     0xFFFFFF, // br_white  (SGR 97)
+    0x1793D1, // arch    (38;2;23;147;209)
 };
 const color_normal: [N_COLORS]u32 = .{
     0xCCCCCC, // default
     0xCCCCCC, // bold
     0xDD5555, // red     (SGR 31)
     0x55DD55, // green   (SGR 32)
-    0x1787C4, // arch    (38;2;23;147;209)
     0xDDBB55, // yellow  (SGR 33)
     0x5555DD, // blue    (SGR 34)
     0xDD55DD, // magenta (SGR 35)
@@ -79,6 +78,7 @@ const color_normal: [N_COLORS]u32 = .{
     0xFF55FF, // br_magenta(SGR 95)
     0x55FFFF, // br_cyan   (SGR 96)
     0xFFFFFF, // br_white  (SGR 97)
+    0x1787C4, // arch    (38;2;23;147;209)
 };
 
 // Other colors (RGB format)
@@ -186,9 +186,9 @@ fn drawCorners() void {
             const rgb = corner_rgb[corner_pix[y * CORNER_W + x]];
             const px = @as(u32, @intCast(x));
             const py = @as(u32, @intCast(y));
-            setPixel(px,              py,              rgb); // top-left
-            setPixel(SCREEN_W-1-px,  py,              rgb); // top-right
-            setPixel(px,             SCREEN_H-1-py,   rgb); // bottom-left
+            setPixel(px,             py,             rgb); // top-left
+            setPixel(SCREEN_W-1-px,  py,             rgb); // top-right
+            setPixel(px,             SCREEN_H-1-py,  rgb); // bottom-left
             setPixel(SCREEN_W-1-px,  SCREEN_H-1-py,  rgb); // bottom-right
         }
     }

@@ -45,7 +45,7 @@ playback trails live output by 5 seconds.
 
 For more details, including instructions on building and running, see [CLAUDE.md](CLAUDE.md).
 
-## Credits
+## Acknowledgements
 
 - **Linux** — originally created by Linus Torvalds, and continued by many others
 - **Open source software** — this project stands on the shoulders of the
