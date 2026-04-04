@@ -118,7 +118,7 @@ pub const N_FADE_STEPS: u32 = 25;
 
 // Ring buffer for chunks
 pub const NUM_BUFFERS: u32 = 4;
-pub const MAX_CHUNK_SZ: u32 = 1 * N_COLS * N_ROWS;
+pub const MAX_CHUNK_SZ: u32 = N_COLS * N_ROWS / 2;
 
 const BufferState = enum(u8) { empty, ready, reading };
 

@@ -1,6 +1,6 @@
 // Configuration
 const DATA_PATH = './data';
-const POLL_INTERVAL_MS = 100;
+const POLL_INTERVAL_MS = 1000;
 const REALTIME_DELAY_MS = 5000;
 
 // Manifest
@@ -38,6 +38,7 @@ let wasmMemory: Uint8Array | null = null;
 let currentChunk = 0;
 let fetchingChunk = false;
 let reachedEnd = false;
+let lastFetchAttemptMs = 0;
 
 async function findStartChunk(targetTimeSec: number): Promise<number> {
   try {
@@ -113,13 +114,16 @@ async function fetchAndFillBuffer(): Promise<void> {
 function renderFrame(): void {
   if (!wasm || !ctx || !imageData || !wasmPixels) return;
 
-  // Fill buffers if needed
-  if (wasm.needsBuffer() && !fetchingChunk) {
+  const now = Date.now();
+
+  // Fill buffers if needed, throttled by POLL_INTERVAL_MS
+  if (wasm.needsBuffer() && !fetchingChunk && now - lastFetchAttemptMs >= POLL_INTERVAL_MS) {
+    lastFetchAttemptMs = now;
     fetchAndFillBuffer();
   }
 
   // Let WASM process lines and render
-  wasm.processFrame(BigInt(Date.now()));
+  wasm.processFrame(BigInt(now));
 
   // Copy from WASM memory to ImageData
   imageData.data.set(wasmPixels);
@@ -173,7 +177,14 @@ async function init(): Promise<void> {
   canvas.height = wasm.getScreenHeight();
   function fitCanvas(): void {
     const pad = 16;
-    const scale = Math.min((window.innerWidth - pad * 2) / canvas!.width, (window.innerHeight - pad * 2) / canvas!.height);
+    const maxWidthAttr = canvas!.dataset.maxWidth;
+    const fitScale = Math.min(
+      (window.innerWidth - pad * 2) / canvas!.width,
+      (window.innerHeight - pad * 2) / canvas!.height
+    );
+    const scale = maxWidthAttr
+      ? Math.min(fitScale, (parseInt(maxWidthAttr, 10) + pad * 2) / canvas!.width)
+      : fitScale;
     canvas!.style.width = `${Math.floor(canvas!.width * scale)}px`;
     canvas!.style.height = `${Math.floor(canvas!.height * scale)}px`;
   }

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const CHUNK_SIZE   = 4800; // MAX_CHUNK_SZ in pris-screen
+const CHUNK_SIZE   = 2400; // MAX_CHUNK_SZ in pris-screen
 const POLL_NS      = 500 * std.time.ns_per_ms;
 const IDLE_FLUSHES = 3; // flush partial buffer after this many consecutive idle polls
 const END_MARKER   = "-=END=-";

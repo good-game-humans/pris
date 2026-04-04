@@ -1,5 +1,7 @@
 # Local QEMU Setup for LFS Build
 
+Note: These instructions are for running an LFS build, bootstrapping from an Arch Linux distro.
+
 ## Overview
 QEMU virtualized environment for bootstrapping Arch Linux locally on Mac (Apple Silicon),
 producing a qcow2 image ready for LFS building on AWS EC2.
@@ -166,7 +168,7 @@ The start script (`setup/local/start-qemu.sh`) boots the Arch live ISO with dire
 
 ```bash
 qemu-system-x86_64 \
-  -m 8G \
+  -m 2G \
   -smp 4 \
   -hda setup/local/lfs.qcow2 \
   -cdrom "tools/Arch Linux/archlinux-x86_64.iso" \
@@ -176,11 +178,11 @@ qemu-system-x86_64 \
   -nic user,hostfwd=tcp::2222-:22 \
   -serial stdio \
   -display none \
-  2>&1 | ts '[pris %.s] ' | tee setup/local/build.log
+  2>&1 | ts '[pris %.s]' | tee setup/local/build.log
 ```
 
 Key flags:
-- `-m 8G`: 8GB RAM — needed for pacstrap to complete reliably
+- `-m 2G`: 2GB RAM
 - `-kernel` / `-initrd`: Boot live ISO kernel directly (bypasses ISO bootloader)
 - `-append "console=ttyS0,115200"`: Serial console output
 - `-nic user,hostfwd=tcp::2222-:22`: SSH port forward

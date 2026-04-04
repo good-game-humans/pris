@@ -91,6 +91,8 @@ fn initTiming(
 ) void { ... }
 ```
 
+### General — 120-char line limit, exceptions where sensible
+
 ### Shell `cmd` blocks — 80-char line limit, use `\` continuations
 ```bash
 cmd 'wget --timeout=30 --tries=2 -c --progress=bar \
