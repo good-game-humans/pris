@@ -29,10 +29,10 @@ while true; do
 
     # Clear chunk files, manifest, and chunk-writer state
     mkdir -p "$CHUNKS_DIR"
-    rm -f "$CHUNKS_DIR"/pris-lines-*.txt \
-          "$CHUNKS_DIR"/pris-chunk-writer.state \
-          "$CHUNKS_DIR"/chunk-times.txt \
-          "$CHUNKS_DIR"/manifest.json
+    find "$CHUNKS_DIR" -maxdepth 1 -name 'pris-lines-*.txt' -delete
+    rm -f "$CHUNKS_DIR/pris-chunk-writer.state" \
+          "$CHUNKS_DIR/chunk-times.txt" \
+          "$CHUNKS_DIR/manifest.json"
 
     # Clear build markers from pris-scripts disk
     sudo modprobe nbd max_part=8

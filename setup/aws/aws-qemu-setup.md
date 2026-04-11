@@ -336,6 +336,21 @@ sudo qemu-nbd -d /dev/nbd0
 Note: use `-T small` with `mkfs.ext4` to allocate enough inodes for the many small
 marker files — the default inode ratio is insufficient.
 
+## Adding Swap
+
+If the OOM killer targets QEMU, add a swap file on the EC2 host:
+
+```bash
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+QEMU with `-m 2560M` uses ~3.3GB RSS on the host; swap prevents OOM kills
+at the cost of slower paging if memory is tight.
+
 ## Notes
 - EC2 root volume is 8GB — keep it clean, the qcow2 is the main storage
 - qcow2 compression is transparent to QEMU; no decompression needed before use

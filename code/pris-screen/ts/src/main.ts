@@ -39,10 +39,35 @@ let currentChunk = 0;
 let fetchingChunk = false;
 let reachedEnd = false;
 let lastFetchAttemptMs = 0;
+let knownStartTime = 0;
+
+async function pollManifest(): Promise<void> {
+  try {
+    const m: Manifest = await fetch(
+      `${DATA_PATH}/manifest.json`,
+      { cache: 'no-store' }
+    ).then(r => r.json());
+    if (m.startTime !== knownStartTime) {
+      console.log('New run detected, resetting state');
+      knownStartTime = m.startTime;
+      currentChunk = 0;
+      reachedEnd = false;
+      wasm!.initTiming(
+        BigInt(m.startTime),
+        BigInt(m.duration ?? 0),
+        BigInt(m.startTime + (m.mode === 'realtime' ? REALTIME_DELAY_MS : 0))
+      );
+      if (m.mode === 'realtime') {
+        const targetTimeSec = (Date.now() - REALTIME_DELAY_MS) / 1000;
+        currentChunk = await findStartChunk(targetTimeSec);
+      }
+    }
+  } catch { /* ignore */ }
+}
 
 async function findStartChunk(targetTimeSec: number): Promise<number> {
   try {
-    const text = await fetch(`${DATA_PATH}/chunk-times.txt`).then(r => r.text());
+    const text = await fetch(`${DATA_PATH}/chunk-times.txt`, { cache: 'no-store' }).then(r => r.text());
     const entries = text.trim().split('\n')
       .filter(line => line.length > 0)
       .map(line => {
@@ -79,7 +104,7 @@ async function fetchAndFillBuffer(): Promise<void> {
   fetchingChunk = true;
 
   try {
-    const response = await fetch(chunkFilename(currentChunk));
+    const response = await fetch(chunkFilename(currentChunk), { cache: 'no-store' });
     if (!response.ok) {
       // No more chunks available yet
       fetchingChunk = false;
@@ -149,13 +174,14 @@ async function init(): Promise<void> {
   // Fetch manifest
   let manifest: Manifest;
   try {
-    manifest = await fetch(`${DATA_PATH}/manifest.json`).then(r => r.json());
+    manifest = await fetch(`${DATA_PATH}/manifest.json`, { cache: 'no-store' }).then(r => r.json());
     console.log('Manifest loaded:', manifest);
   } catch {
     // Default to realtime mode with current time as start
     manifest = { mode: 'realtime', startTime: Date.now() };
     console.log('No manifest, using realtime mode');
   }
+  knownStartTime = manifest.startTime;
 
   // Initialize timing
   wasm.initTiming(
@@ -205,6 +231,9 @@ async function init(): Promise<void> {
   wasmPixels = new Uint8ClampedArray(wasm.memory.buffer, ptr, size);
   wasmMemory = new Uint8Array(wasm.memory.buffer);
   imageData = ctx.createImageData(width, height);
+
+  // Poll manifest for new runs
+  setInterval(pollManifest, 10_000);
 
   // Start render loop
   requestAnimationFrame(renderFrame);
