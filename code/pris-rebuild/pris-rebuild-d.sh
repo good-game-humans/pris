@@ -946,7 +946,7 @@ EOF'
 # Manually set the right edge of message output (characters)
 # Useful when resetting console font during boot to override
 # automatic screen width detection
-COLUMNS=120
+COLUMNS=92
 
 # Interactive startup
 #IPROMPT="yes" # Whether to display the interactive boot prompt

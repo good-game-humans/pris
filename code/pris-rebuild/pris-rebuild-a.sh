@@ -4,7 +4,7 @@
 
 source "/pris/pris-fns.sh"
 
-stty cols 120
+stty cols 92
 
 if ! marker_exists "init" ; then
     cmd 'export LFS=/mnt/lfs'

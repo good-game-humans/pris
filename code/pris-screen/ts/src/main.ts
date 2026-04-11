@@ -86,8 +86,8 @@ async function findStartChunk(targetTimeSec: number): Promise<number> {
   }
 }
 
-async function loadWasm(): Promise<PrisScreenWasm> {
-  const response = await fetch('./wasm/zig-out/bin/pris-screen.wasm');
+async function loadWasm(src: string): Promise<PrisScreenWasm> {
+  const response = await fetch(src);
   const bytes = await response.arrayBuffer();
   const { instance } = await WebAssembly.instantiate(bytes, {});
   return instance.exports as unknown as PrisScreenWasm;
@@ -161,8 +161,12 @@ function renderFrame(): void {
 }
 
 async function init(): Promise<void> {
+  // Resolve WASM path from canvas data attribute
+  const canvasEl = document.getElementById('terminal') as HTMLCanvasElement;
+  const wasmSrc = canvasEl.dataset.wasmSrc ?? './wasm/zig-out/bin/pris-screen-120x40.wasm';
+
   // Load WASM
-  wasm = await loadWasm();
+  wasm = await loadWasm(wasmSrc);
   console.log('WASM loaded, version:', wasm.getVersion());
   setInterval(() => {
     if (wasm?.hadUnknownColor()) console.warn('pris-screen: unrecognised ANSI color encountered');
@@ -198,7 +202,7 @@ async function init(): Promise<void> {
   }
 
   // Set up canvas
-  canvas = document.getElementById('terminal') as HTMLCanvasElement;
+  canvas = canvasEl;
   canvas.width = wasm.getScreenWidth();
   canvas.height = wasm.getScreenHeight();
   function fitCanvas(): void {

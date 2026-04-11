@@ -1,13 +1,14 @@
 const std = @import("std");
-const font = @import("font.zig");
+const font = @import("font");
+const build_options = @import("build_options");
 
 // Font dimensions from generated font
 pub const CHAR_W: u32 = font.FONT_W;
 pub const LINE_H: u32 = font.FONT_H + 1; // Add 1px line spacing
 
 // Display constants
-pub const N_COLS: u32 = 120;
-pub const N_ROWS: u32 = 40;
+pub const N_COLS: u32 = build_options.n_cols;
+pub const N_ROWS: u32 = build_options.n_rows;
 pub const TEXT_X: u32 = 8;
 pub const TEXT_Y: u32 = 8;
 pub const SCREEN_W: u32 = TEXT_X * 2 + CHAR_W * N_COLS;
@@ -118,7 +119,7 @@ pub const N_FADE_STEPS: u32 = 25;
 
 // Ring buffer for chunks
 pub const NUM_BUFFERS: u32 = 4;
-pub const MAX_CHUNK_SZ: u32 = N_COLS * N_ROWS / 2;
+pub const MAX_CHUNK_SZ: u32 = 2400;
 
 const BufferState = enum(u8) { empty, ready, reading };
 
@@ -134,7 +135,7 @@ var manifest_start_ms: u64 = 0;
 var manifest_duration_ms: u64 = 0;
 var run_start_epoch_ms: u64 = 0;
 var reached_end: bool = false;
-var last_line_was_status: bool = false;
+var last_status_line_count: u32 = 0;
 
 // Cursor
 var cursor_visible: bool = true;
@@ -769,13 +770,34 @@ fn processPendingLines(now_ms: u64) void {
         // Display the line
         const content = chunk_buffers[read_buffer_idx][read_pos + parsed.content_start .. read_pos + parsed.content_end];
         if (std.mem.startsWith(u8, content, "COMPILATION COMPLETE")) {
-            if (last_line_was_status and num_screen_lines > 0) {
-                num_screen_lines -= 1;
+            if (last_status_line_count > 0 and num_screen_lines >= last_status_line_count) {
+                num_screen_lines -= last_status_line_count;
             }
-            addLineWithWrap(content);
-            last_line_was_status = true;
+
+            const left = "COMPILATION COMPLETE";
+
+            // Find right portion after the whitespace gap
+            var right_start: usize = left.len;
+            while (right_start < content.len and content[right_start] == ' ') : (right_start += 1) {}
+            const right = std.mem.trimRight(u8, content[right_start..], " \r\n");
+
+            // Build a right-aligned N_COLS-wide screen line
+            var line_chars:  [N_COLS]u8    = [_]u8{' '}         ** N_COLS;
+            var line_colors: [N_COLS]Color = [_]Color{.default} ** N_COLS;
+            var line_bolds:  [N_COLS]bool  = [_]bool{false}     ** N_COLS;
+
+            const left_len = @min(left.len, N_COLS);
+            @memcpy(line_chars[0..left_len], left[0..left_len]);
+
+            if (right.len > 0 and right.len <= N_COLS) {
+                const right_pos = N_COLS - right.len;
+                @memcpy(line_chars[right_pos..], right);
+            }
+
+            addScreenLine(&line_chars, &line_colors, &line_bolds);
+            last_status_line_count = 1;
         } else {
-            last_line_was_status = false;
+            last_status_line_count = 0;
             addLineWithWrap(content);
         }
 
@@ -801,7 +823,7 @@ fn resetForReplay() void {
     }
 
     reached_end = false;
-    last_line_was_status = false;
+    last_status_line_count = 0;
     run_start_epoch_ms = 0; // Will be set on next processFrame
     pending_command = false;
 }
@@ -866,7 +888,7 @@ export fn init() void {
     clearScreen();
 
     num_screen_lines = 0;
-    last_line_was_status = false;
+    last_status_line_count = 0;
     for (0..MAX_SCREEN_LINES) |i| {
         screen_line_lengths[i] = 0;
         screen_line_ages[i] = N_FADE_STEPS;
