@@ -77,7 +77,7 @@ python3 code/util/rasterize_font.py > code/pris-screen/wasm/src/font.zig
 - `run-pris.sh` — main loop: cleans chunks/markers, writes manifest, starts
   chunk-writer, runs QEMU, signals END, repeats
 - `aws-qemu-setup.md` — full EC2 setup instructions
-- `pris.qcow2` — main LFS disk (~15 GB, not in git)
+- `pris.qcow2` — main LFS disk (~3 GB, not in git)
 - `pris-scripts.qcow2` — scripts + markers disk (100 MB ext4)
 
 ## Code Conventions
