@@ -52,7 +52,7 @@ Browser-based terminal renderer.
 
 **WASM** (`wasm/src/main.zig`): Zig compiled to WASM. Parses ANSI escape
 codes, renders glyphs from embedded bitmap font (`font.zig`), writes RGBA
-pixels into a shared memory buffer. Build with `zig build` inside `wasm/`.
+pixels into a shared memory buffer. Build with `zig build -Dcols=92 -Drows=36 -Dfont-size=16` inside `wasm/`.
 
 **TypeScript** (`ts/src/main.ts`): Fetches chunks from `./data/`, passes
 bytes to WASM, renders frames via `requestAnimationFrame`. In `realtime`

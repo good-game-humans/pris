@@ -348,7 +348,7 @@ sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-QEMU with `-m 2560M` uses ~3.3GB RSS on the host; swap prevents OOM kills
+QEMU with `-m 4G` uses ~4.5GB RSS on the host; swap prevents OOM kills
 at the cost of slower paging if memory is tight.
 
 ## Notes

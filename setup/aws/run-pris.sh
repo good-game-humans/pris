@@ -36,6 +36,7 @@ while true; do
 
     # Clear build markers from pris-scripts disk
     sudo modprobe nbd max_part=8
+    sudo qemu-nbd -d /dev/nbd0 2>/dev/null || true
     sudo qemu-nbd -c /dev/nbd0 "$SCRIPTS_IMG"
     sudo mkdir -p /mnt/pris-scripts-tmp
     sudo mount /dev/nbd0 /mnt/pris-scripts-tmp
@@ -60,7 +61,7 @@ while true; do
 
     # --- Run QEMU ---
     qemu-system-x86_64 \
-        -m 6G \
+        -m 4G \
         -smp 4 \
         -hda "$PRIS_DIR/setup/aws/pris-overlay.qcow2" \
         -hdb "$SCRIPTS_IMG" \
