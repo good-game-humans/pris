@@ -207,10 +207,11 @@ async function init(): Promise<void> {
   canvas.height = wasm.getScreenHeight();
   function fitCanvas(): void {
     const pad = 16;
+    const container = document.getElementById('screen') ?? document.body;
     const maxWidthAttr = canvas!.dataset.maxWidth;
     const fitScale = Math.min(
-      (window.innerWidth - pad * 2) / canvas!.width,
-      (window.innerHeight - pad * 2) / canvas!.height
+      (container.clientWidth - pad * 2) / canvas!.width,
+      (container.clientHeight - pad * 2) / canvas!.height
     );
     const scale = maxWidthAttr
       ? Math.min(fitScale, (parseInt(maxWidthAttr, 10) + pad * 2) / canvas!.width)

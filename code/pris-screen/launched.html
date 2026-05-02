@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pris</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #screen {
+      background: #10181a;
+      flex: 5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 0;
+    }
+    #terminal {
+      background: #1a2528;
+      max-width: calc(100% - 32px);
+      max-height: calc(100% - 32px);
+    }
+    #info {
+      background: #888;
+      color: #111;
+      font-family: 'Trebuchet MS', sans-serif;
+      font-size: 13px;
+      padding: 16px 24px;
+      overflow-y: auto;
+      flex: 2;
+      min-height: 0;
+      border-top: 4px solid #13a9ff;
+    }
+    #info h2 { margin: 0 0 10px; font-size: 14px; }
+    #info p { margin: 0 0 10px; line-height: 1.5; }
+    #info p:last-child { margin: 0; }
+    @media (min-width: 1180px) {
+      #info { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="screen">
+    <canvas id="terminal" data-wasm-src="./wasm/zig-out/bin/pris-screen-92x36.wasm"></canvas>
+  </div>
+  <div id="info">
+    <h2>The life of American machines_</h2>
+    <p>This is <strong>pris</strong>. I put her to the task of eternal rebuild. The window above shows a live stream of her going about this task. The scrolling lines are the commands she is running, followed by the output of the commands.</p>
+    <p>She is rebuilding herself from bare metal. This is an arduous and time-consuming process, especially for an older machine like pris. The rebuild process consists of downloading her source code (freely-available from various sites on the Net), then compiling the source code into her operating system and programs. The source code is simply a set of text files containing instructions for how to build the programs, and in computer parlance, the building of binary programs from source code is called compiling.</p>
+    <p>So <strong>pris</strong> is downloading the latest version of the Linux operating system code, as well as the latest versions of the rest of her, and compiling herself. When she is finished (after several days) she is in a shiny new state: she's got a fresh web server, new code libraries, assorted Python modules, and much more. There isn't much time to enjoy her new digs because I give her a day to rest, then she reboots and begins the rebuild process anew.</p>
+  </div>
+  <script type="module" src="./ts/dist/main.js"></script>
+</body>
+</html>
