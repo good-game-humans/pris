@@ -1679,3 +1679,6 @@ while [ $(date +%s) -lt $END ]; do
     sleep 60
 done
 unset R END COLS
+
+echo_cmd 'shutdown -r now'
+shutdown -h now

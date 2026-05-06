@@ -1263,7 +1263,9 @@ install -v -m644    contrib/ssh-copy-id.1 \
 install -v -m755 -d /usr/share/doc/openssh-10.0p1    &&
 install -v -m644    INSTALL LICENCE OVERVIEW README* \
                     /usr/share/doc/openssh-10.0p1'
-    cmd 'echo "PasswordAuthentication no" >> /etc/ssh/sshd_config &&
+    cmd 'echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config &&
+echo "PermitEmptyPasswords yes" >> /etc/ssh/sshd_config &&
+echo "PermitRootLogin yes" >> /etc/ssh/sshd_config &&
 echo "KbdInteractiveAuthentication no" >> /etc/ssh/sshd_config'
     cmd 'tar -xf ../blfs-bootscripts-20250225.tar.xz'
     cmd 'cd blfs-bootscripts-20250225'
