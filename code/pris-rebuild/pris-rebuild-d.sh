@@ -511,8 +511,8 @@ if ! marker_exists "vim" ; then
     cmd 'make'
     cmd 'make install'
     cmd 'ln -sv vim /usr/bin/vi'
-    cmd 'for L in /usr/share/man/{,*/}man1/vim.1; do 
-    ln -sv vim.1 $(dirname $L)/vi.1; 
+    cmd 'for L in /usr/share/man/{,*/}man1/vim.1; do
+    ln -sv vim.1 $(dirname $L)/vi.1;
 done'
     cmd 'ln -sv ../vim/vim91/doc /usr/share/doc/vim-9.1.1629'
     cmd 'cat > /etc/vimrc << "EOF"
@@ -825,6 +825,22 @@ if ! marker_exists "lfs-bootscripts" ; then
     cmd 'tar -xf lfs-bootscripts-20250827.tar.xz'
     cmd 'cd lfs-bootscripts-20250827'
     cmd 'make install'
+
+    # Do some custom changes on boot messages.
+    cmd "sed -i '/CURS_ZERO/s/0G/21G/' /lib/lsb/init-functions"
+    cmd "sed -i '/evaluate_retval/d' /etc/init.d/mountvirtfs"
+    cmd "sed -i '/log_info_msg/{/log_info_msg2/!s/^\\( *\\).*/&\\
+\\1evaluate_retval/;}' /etc/init.d/mountvirtfs"
+    cmd "sed -i '/mount -o /s/^\\( *\\).*/&\\
+\\1evaluate_retval/' /etc/init.d/mountvirtfs"
+    cmd "sed -i '/ln -sf/s/^\\( *\\).*/&\\
+\\1evaluate_retval/' /etc/init.d/mountvirtfs"
+    FIND_STR1="Mounting virtual file systems:"
+    cmd "sed -i \"s|$FIND_STR1|$FIND_STR1\\n|\" /etc/init.d/mountvirtfs"
+    FIND_STR2="Create symlinks in /dev targeting /proc:"
+    cmd "sed -i \"s|$FIND_STR2|$FIND_STR2\\n|\" /etc/init.d/mountvirtfs"
+    unset FIND_STR1,FIND_STR2
+
     cmd 'cd /sources'
     cmd 'rm -rf lfs-bootscripts-20250827'
     place_marker "lfs-bootscripts"
@@ -938,10 +954,10 @@ EOF'
 
 # Use a colored prefix
 # These values, if specified here, override the defaults
-#BMPREFIX="      "
-#SUCCESS_PREFIX="${SUCCESS}  *  ${NORMAL} "
-#FAILURE_PREFIX="${FAILURE}*****${NORMAL} "
-#WARNING_PREFIX="${WARNING} *** ${NORMAL} "
+BMPREFIX=""
+SUCCESS_PREFIX=""
+FAILURE_PREFIX=""
+WARNING_PREFIX=""
 
 # Manually set the right edge of message output (characters)
 # Useful when resetting console font during boot to override

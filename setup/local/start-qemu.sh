@@ -16,9 +16,9 @@ Login: root (no password)
 EOF
 
 exec qemu-system-x86_64 \
-  -m 2560M \
+  -m 4G \
   -smp 4 \
-  -hda "$PRIS_DIR/setup/local/pris-overlay.qcow2" \
+  -hda "pris-overlay.qcow2" \
   -hdb "$SCRIPTS_IMG" \
   -kernel "$BOOT_DIR/vmlinuz-pris" \
   -append "root=/dev/sda1 rw console=ttyS0,115200" \
