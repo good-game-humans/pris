@@ -1,5 +1,5 @@
 #!/bin/bash
-# pris-rebuild-a.sh - Automated LFS build script, to be run on QEMU startup 
+# pris-rebuild-a.sh - Automated LFS build script, to be run on QEMU startup
 # (by root)
 
 source "/pris/pris-fns.sh"
@@ -197,22 +197,6 @@ if ! marker_exists "dl-coreutils" ; then
     && grep " coreutils-9.7.tar.xz$" /pris/md5sums \
     | md5sum -c)' \
     && place_marker "dl-coreutils"
-fi
-
-if ! marker_exists "dl-dbus" ; then
-    cmd 'wget --timeout=30 --tries=2 -c --progress=bar \
-    -P $LFS/sources \
-    $(grep /dbus-1.16.2.tar.xz$ /pris/wget-list-sysv)'
-    cmd '[ -f $LFS/sources/dbus-1.16.2.tar.xz ] || \
-    for m in $MIRRORS; do \
-        wget --timeout=30 --tries=1 -c --progress=bar \
-            -P $LFS/sources ${m%/}/dbus-1.16.2.tar.xz \
-            && break; \
-    done'
-    cmd '(cd $LFS/sources \
-    && grep " dbus-1.16.2.tar.xz$" /pris/md5sums \
-    | md5sum -c)' \
-    && place_marker "dl-dbus"
 fi
 
 if ! marker_exists "dl-dejagnu" ; then
@@ -1567,6 +1551,51 @@ if ! marker_exists "dl-sysvinit-patch" ; then
     && grep " sysvinit-3.14-consolidated-1.patch$" /pris/md5sums \
     | md5sum -c)' \
     && place_marker "dl-sysvinit-patch"
+fi
+
+if ! marker_exists "blfs-bootscripts" ; then
+    cmd 'wget https://anduin.linuxfromscratch.org/BLFS/blfs-bootscripts/blfs-bootscripts-20250225.tar.xz'
+    place_marker "blfs-bootscripts"
+fi
+
+if ! marker_exists "dl-libtasn1" ; then
+    cmd 'wget --timeout=30 --tries=2 -c --progress=bar \
+    -P $LFS/sources \
+    https://ftp.gnu.org/gnu/libtasn1/libtasn1-4.20.0.tar.gz'
+    cmd '(cd $LFS/sources \
+    && echo "930f71d788cf37505a0327c1b84741be libtasn1-4.20.0.tar.gz" \
+    | md5sum -c)' \
+    && place_marker "dl-libtasn1"
+fi
+
+if ! marker_exists "dl-p11-kit" ; then
+    cmd 'wget --timeout=30 --tries=2 -c --progress=bar \
+    -P $LFS/sources \
+    https://github.com/p11-glue/p11-kit/releases/download/0.25.5/p11-kit-0.25.5.tar.xz'
+    cmd '(cd $LFS/sources \
+    && echo "e9c5675508fcd8be54aa4c8cb8e794fc p11-kit-0.25.5.tar.xz" \
+    | md5sum -c)' \
+    && place_marker "dl-p11-kit"
+fi
+
+if ! marker_exists "dl-make-ca" ; then
+    cmd 'wget --timeout=30 --tries=2 -c --progress=bar \
+    -P $LFS/sources \
+    https://github.com/lfs-book/make-ca/archive/v1.16.1/make-ca-1.16.1.tar.gz'
+    cmd '(cd $LFS/sources \
+    && echo "bf9cea2d24fc5344d4951b49f275c595 make-ca-1.16.1.tar.gz" \
+    | md5sum -c)' \
+    && place_marker "dl-make-ca"
+fi
+
+if ! marker_exists "dl-wget" ; then
+    cmd 'wget --timeout=30 --tries=2 -c --progress=bar \
+    -P $LFS/sources \
+    https://ftp.gnu.org/gnu/wget/wget-1.25.0.tar.gz'
+    cmd '(cd $LFS/sources \
+    && echo "c70ba58b36f944e8ba1d655ace552881 wget-1.25.0.tar.gz" \
+    | md5sum -c)' \
+    && place_marker "dl-wget"
 fi
 
 if ! marker_exists "lfs-filesystem" ; then

@@ -613,6 +613,7 @@ fn addLineWithWrap(raw: []const u8) void {
     var proc_len: u32 = 0;
 
     if (pending_command) {
+        if (raw.len == 0) return; // skip empty lines between prompt and command
         var consumed: u32 = 0;
         var cmd_state = ColorState{};
         processContent(raw, &proc_chars, &proc_colors, &proc_bolds, &proc_len, &consumed, &cmd_state);
@@ -704,7 +705,7 @@ fn parseLine(buf: []const u8) ParseResult {
     // Skip to ']' then skip spaces — content follows on the same line
     while (i < buf.len and buf[i] != ']') : (i += 1) {}
     if (i < buf.len and buf[i] == ']') i += 1;
-    while (i < buf.len and buf[i] == ' ') : (i += 1) {}
+    if (i < buf.len and buf[i] == ' ') i += 1; // skip single separator space
     result.content_start = i;
 
     // Find end of content (newline or end of buffer)
@@ -796,6 +797,8 @@ fn processPendingLines(now_ms: u64) void {
 
             addScreenLine(&line_chars, &line_colors, &line_bolds);
             last_status_line_count = 1;
+        } else if (content.len == 0 and last_status_line_count > 0) {
+            // skip empty lines that follow a status line
         } else {
             last_status_line_count = 0;
             addLineWithWrap(content);

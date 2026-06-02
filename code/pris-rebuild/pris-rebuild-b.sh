@@ -228,7 +228,7 @@ popd'
     cmd 'make'
     cmd 'make DESTDIR=$LFS install'
     cmd 'ln -sv libncursesw.so $LFS/usr/lib/libncurses.so'
-    cmd "sed -e 's/^#if.*XOPEN.*$/#if 1/' \
+    cmd "sed -e 's/^#if.*XOPEN.*$/#if 1/' \\
     -i $LFS/usr/include/curses.h"
     cmd 'cd $LFS/sources'
     cmd 'rm -rf ncurses-6.5-20250809'
@@ -263,7 +263,7 @@ if ! marker_exists "tools-coreutils" ; then
     cmd 'mv -v $LFS/usr/bin/chroot              $LFS/usr/sbin'
     cmd 'mkdir -pv $LFS/usr/share/man/man8'
     cmd 'mv -v $LFS/usr/share/man/man1/chroot.1 $LFS/usr/share/man/man8/chroot.8'
-    cmd 'sed -i 's/"1"/"8"/'                    $LFS/usr/share/man/man8/chroot.8'
+    cmd "sed -i 's/\"1\"/\"8\"/'                    \$LFS/usr/share/man/man8/chroot.8'"
     cmd 'cd $LFS/sources'
     cmd 'rm -rf coreutils-9.7'
     place_marker "tools-coreutils"
@@ -463,7 +463,7 @@ if ! marker_exists "tools-gcc-pass2" ; then
         -i.orig gcc/config/i386/t-linux64
   ;;
 esac"
-    cmd "sed '/thread_header =/s/@.*@/gthr-posix.h/' \
+    cmd "sed '/thread_header =/s/@.*@/gthr-posix.h/' \\
     -i libgcc/Makefile.in libstdc++-v3/include/Makefile.in"
     cmd 'mkdir -v build'
     cmd 'cd       build'

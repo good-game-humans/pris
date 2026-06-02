@@ -743,7 +743,7 @@ if ! marker_exists "ncurses" ; then
     cmd 'install -vm755 dest/usr/lib/libncursesw.so.6.5 /usr/lib'
     cmd 'rm -v  dest/usr/lib/libncursesw.so.6.5'
     cmd "sed -e 's/^#if.*XOPEN.*\$/#if 1/' \\
-        -i dest/usr/include/curses.h"
+    -i dest/usr/include/curses.h"
     cmd 'cp -av dest/* /'
     cmd 'for lib in ncurses form panel menu ; do
     ln -sfv lib${lib}w.so /usr/lib/lib${lib}.so
@@ -758,7 +758,7 @@ fi
 
 if ! marker_exists "sed" ; then
     cmd 'tar -xf sed-4.9.tar.xz'
-    cnd 'cd sed-4.9'
+    cmd 'cd sed-4.9'
     cmd './configure --prefix=/usr'
     cmd 'make'
     cmd 'make html'
@@ -772,7 +772,7 @@ fi
 
 if ! marker_exists "psmisc" ; then
     cmd 'tar -xf psmisc-23.7.tar.xz'
-    cnd 'cd psmisc-23.7'
+    cmd 'cd psmisc-23.7'
     cmd './configure --prefix=/usr'
     cmd 'make'
     cmd 'make install'
@@ -783,7 +783,7 @@ fi
 
 if ! marker_exists "gettext" ; then
     cmd 'tar -xf gettext-0.26.tar.xz'
-    cnd 'cd gettext-0.26'
+    cmd 'cd gettext-0.26'
     cmd './configure --prefix=/usr    \
             --disable-static \
             --docdir=/usr/share/doc/gettext-0.26'

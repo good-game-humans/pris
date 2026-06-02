@@ -9,6 +9,7 @@ CHUNKS_DIR="/var/www/html/pris/data" # Must match pris-screen DATA_PATH
 CHUNK_WRITER="$PRIS_DIR/bin/pris-chunk-writer"
 BOOT_DIR="$PRIS_DIR/setup/aws/pris-boot"
 STOP_FILE="$PRIS_DIR/run/stop"
+CONTINUE_FROM_PREVIOUS_FILE="$PRIS_DIR/run/continue-from-previous"
 SCRIPTS_IMG="$PRIS_DIR/setup/aws/pris-scripts.qcow2"
 
 mkdir -p "$PRIS_DIR/run"
@@ -34,21 +35,25 @@ while true; do
           "$CHUNKS_DIR/chunk-times.txt" \
           "$CHUNKS_DIR/manifest.json"
 
-    # Clear build markers from pris-scripts disk
-    sudo modprobe nbd max_part=8
-    sudo qemu-nbd -d /dev/nbd0 2>/dev/null || true
-    sudo qemu-nbd -c /dev/nbd0 "$SCRIPTS_IMG"
-    sudo mkdir -p /mnt/pris-scripts-tmp
-    sudo mount /dev/nbd0 /mnt/pris-scripts-tmp
-    sudo rm -f /mnt/pris-scripts-tmp/markers/*
-    sudo umount /mnt/pris-scripts-tmp
-    sudo qemu-nbd -d /dev/nbd0
+    if [ ! -f "$CONTINUE_FROM_PREVIOUS_FILE" ]; then
+        # Clear build markers from pris-scripts disk
+        sudo modprobe nbd max_part=8
+        sudo qemu-nbd -d /dev/nbd0 2>/dev/null || true
+        sudo qemu-nbd -c /dev/nbd0 "$SCRIPTS_IMG"
+        sudo mkdir -p /mnt/pris-scripts-tmp
+        sudo mount /dev/nbd0 /mnt/pris-scripts-tmp
+        rm -rf "$PRIS_DIR/run/markers.1"
+        cp -a /mnt/pris-scripts-tmp/markers "$PRIS_DIR/run/markers.1"
+        sudo rm -f /mnt/pris-scripts-tmp/markers/*
+        sudo umount /mnt/pris-scripts-tmp
+        sudo qemu-nbd -d /dev/nbd0
 
-    # Recreate overlay so each build starts from a clean pris.qcow2 state
-    qemu-img create -f qcow2 \
-        -b "$PRIS_DIR/setup/aws/pris.qcow2" \
-        -F qcow2 \
-        "$PRIS_DIR/setup/aws/pris-overlay.qcow2"
+        # Recreate overlay so each build starts from a clean pris.qcow2 state
+        qemu-img create -f qcow2 \
+            -b "$PRIS_DIR/setup/aws/pris.qcow2" \
+            -F qcow2 \
+            "$PRIS_DIR/setup/aws/pris-overlay.qcow2"
+    fi
 
     # --- Write manifest ---
     START_MS=$(date +%s%3N)
@@ -70,7 +75,7 @@ while true; do
         -nic user,hostfwd=tcp::2222-:22 \
         -serial stdio \
         -display none \
-        2>&1 | ts '[pris %.s]' | tee "$LOG_FILE"
+        2>&1 | stdbuf -oL tr '\r' '\n=STRIP=\n' | sed --unbuffered 's/\x1b\[K//g; /^=STRIP=$/d' | ts '[pris %.s]' | tee "$LOG_FILE"
 
     # Signal chunk writer to flush and exit
     echo "-=END=-" >> "$LOG_FILE"

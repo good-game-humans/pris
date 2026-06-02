@@ -10,7 +10,9 @@
       "Bash(zig fmt:*)",
       "Bash(nc:*)",
       "WebFetch(domain:www.linuxfromscratch.org)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Read(//Users/victor/Desktop/pris-logs/**)",
+      "Bash(awk -F: 'NR>1 && $1-prev>1 {print \"...\"} {prev=$1; print}')"
     ]
   }
 }

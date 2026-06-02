@@ -532,7 +532,6 @@ endif
 
 " End /etc/vimrc
 EOF'
-cat /etc/vimrc
     cmd 'cd /sources'
     cmd 'rm -rf vim-9.1.1629'
     place_marker "vim"
@@ -562,27 +561,27 @@ if ! marker_exists "udev" ; then
     cmd 'tar -xf systemd-257.8.tar.gz'
     cmd 'cd systemd-257.8'
     cmd 'sed -e '"'"'s/GROUP="render"/GROUP="video"/'"'"' \
-        -e '"'"'s/GROUP="sgx", //'"'"'               \
-        -i rules.d/50-udev-default.rules.in'
+    -e '"'"'s/GROUP="sgx", //'"'"'               \
+    -i rules.d/50-udev-default.rules.in'
     cmd "sed -i '/systemd-sysctl/s/^/#/' rules.d/99-systemd.rules.in"
     cmd 'sed -e '"'"'/NETWORK_DIRS/s/systemd/udev/'"'"' \
-        -i src/libsystemd/sd-network/network-util.h'
+    -i src/libsystemd/sd-network/network-util.h'
     cmd 'mkdir -p build'
     cmd 'cd       build'
     cmd 'meson setup ..                  \
-          --prefix=/usr             \
-          --buildtype=release       \
-          -D mode=release           \
-          -D dev-kvm-mode=0660      \
-          -D link-udev-shared=false \
-          -D logind=false           \
-          -D vconsole=false'
+        --prefix=/usr             \
+        --buildtype=release       \
+        -D mode=release           \
+        -D dev-kvm-mode=0660      \
+        -D link-udev-shared=false \
+        -D logind=false           \
+        -D vconsole=false'
     cmd "export udev_helpers=\$(grep \"'name' :\" ../src/udev/meson.build | \\
                       awk '{print \$3}' | tr -d \",'\" | grep -v 'udevadm')"
     cmd 'ninja udevadm systemd-hwdb \
-          $(ninja -n | grep -Eo '"'"'(src/(lib)?udev|rules.d|hwdb.d)/[^ ]*'"'"') \
-          $(realpath libudev.so --relative-to .)                         \
-          $udev_helpers'
+        $(ninja -n | grep -Eo '"'"'(src/(lib)?udev|rules.d|hwdb.d)/[^ ]*'"'"') \
+        $(realpath libudev.so --relative-to .)                         \
+        $udev_helpers'
     cmd 'install -vm755 -d {/usr/lib,/etc}/udev/{hwdb.d,rules.d,network}'
     cmd 'install -vm755 -d /usr/{lib,share}/pkgconfig'
     cmd 'install -vm755 udevadm                             /usr/bin/'
@@ -601,7 +600,7 @@ if ! marker_exists "udev" ; then
     cmd 'install -vm644 ../network/99-default.link          /usr/lib/udev/network'
     cmd 'tar -xvf ../../udev-lfs-20230818.tar.xz'
     cmd 'make -f udev-lfs-20230818/Makefile.lfs install'
-    cmd "tar -xf ../../systemd-man-pages-257.8.tar.xz                            \\
+    cmd "tar -xf ../../systemd-man-pages-257.8.tar.xz                          \\
     --no-same-owner --strip-components=1                              \\
     -C /usr/share/man --wildcards '*/udev*' '*/libudev*'              \\
                                   '*/systemd.link.5'                  \\
@@ -741,7 +740,6 @@ secure_mode 2
 
 # End /etc/syslog.conf
 EOF'
-cat /etc/syslog.conf
     cmd 'cd /sources'
     cmd 'rm -rf sysklogd-2.7.2'
     place_marker "sysklogd"
@@ -829,8 +827,7 @@ if ! marker_exists "lfs-bootscripts" ; then
     # Do some custom changes on boot messages.
     cmd "sed -i '/CURS_ZERO/s/0G/21G/' /lib/lsb/init-functions"
     cmd "sed -i '/evaluate_retval/d' /etc/init.d/mountvirtfs"
-    cmd "sed -i '/log_info_msg/{/log_info_msg2/!s/^\\( *\\).*/&\\
-\\1evaluate_retval/;}' /etc/init.d/mountvirtfs"
+    cmd "sed -i '/Mounting virtual file systems/s/.*/&\\n      evaluate_retval/' /etc/init.d/mountvirtfs"
     cmd "sed -i '/mount -o /s/^\\( *\\).*/&\\
 \\1evaluate_retval/' /etc/init.d/mountvirtfs"
     cmd "sed -i '/ln -sf/s/^\\( *\\).*/&\\
@@ -1130,21 +1127,6 @@ EOF"
     place_marker "linux"
 fi
 
-if ! marker_exists "blfs-bootscripts" ; then
-    cmd 'wget https://anduin.linuxfromscratch.org/BLFS/blfs-bootscripts/blfs-bootscripts-20250225.tar.xz'
-    place_marker "blfs-bootscripts"
-fi
-
-if ! marker_exists "dl-libtasn1" ; then
-    cmd 'wget --timeout=30 --tries=2 -c --progress=bar \
-    -P $LFS/sources \
-    https://ftp.gnu.org/gnu/libtasn1/libtasn1-4.20.0.tar.gz'
-    cmd '(cd $LFS/sources \
-    && echo "930f71d788cf37505a0327c1b84741be libtasn1-4.20.0.tar.gz" \
-    | md5sum -c)' \
-    && place_marker "dl-libtasn1"
-fi
-
 if marker_exists "dl-libtasn1" && ! marker_exists "libtasn1" ; then
     cmd 'tar -xf libtasn1-4.20.0.tar.gz'
     cmd 'cd libtasn1-4.20.0'
@@ -1155,16 +1137,6 @@ make'
     cmd 'cd /sources'
     cmd 'rm -rf libtasn1-4.20.0'
     place_marker "libtasn1"
-fi
-
-if ! marker_exists "dl-p11-kit" ; then
-    cmd 'wget --timeout=30 --tries=2 -c --progress=bar \
-    -P $LFS/sources \
-    https://github.com/p11-glue/p11-kit/releases/download/0.25.5/p11-kit-0.25.5.tar.xz'
-    cmd '(cd $LFS/sources \
-    && echo "e9c5675508fcd8be54aa4c8cb8e794fc p11-kit-0.25.5.tar.xz" \
-    | md5sum -c)' \
-    && place_marker "dl-p11-kit"
 fi
 
 if marker_exists "dl-p11-kit" && ! marker_exists "p11-kit" ; then
@@ -1180,7 +1152,6 @@ cat >> trust/trust-extract-compat << \"EOF\"
 EOF"
     cmd 'mkdir p11-build &&
 cd    p11-build &&
-
 meson setup ..            \
       --prefix=/usr       \
       --buildtype=release \
@@ -1193,16 +1164,6 @@ ln -sfv /usr/libexec/p11-kit/trust-extract-compat \
     cmd 'cd /sources'
     cmd 'rm -rf p11-kit-0.25.5'
     place_marker "p11-kit"
-fi
-
-if ! marker_exists "dl-make-ca" ; then
-    cmd 'wget --timeout=30 --tries=2 -c --progress=bar \
-    -P $LFS/sources \
-    https://github.com/lfs-book/make-ca/archive/v1.16.1/make-ca-1.16.1.tar.gz'
-    cmd '(cd $LFS/sources \
-    && echo "bf9cea2d24fc5344d4951b49f275c595 make-ca-1.16.1.tar.gz" \
-    | md5sum -c)' \
-    && place_marker "dl-make-ca"
 fi
 
 if marker_exists "dl-make-ca" && ! marker_exists "make-ca" ; then
@@ -1225,16 +1186,6 @@ EOF'
     place_marker "make-ca"
 fi
 
-if ! marker_exists "dl-wget" ; then
-    cmd 'wget --timeout=30 --tries=2 -c --progress=bar \
-    -P $LFS/sources \
-    https://ftp.gnu.org/gnu/wget/wget-1.25.0.tar.gz'
-    cmd '(cd $LFS/sources \
-    && echo "c70ba58b36f944e8ba1d655ace552881 wget-1.25.0.tar.gz" \
-    | md5sum -c)' \
-    && place_marker "dl-wget"
-fi
-
 if marker_exists "libtasn1" \
     && marker_exists "p11-kit" \
     && marker_exists "make-ca" \
@@ -1254,6 +1205,8 @@ fi
 
 if ! marker_exists "openssh" ; then
     cmd 'wget https://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.0p1.tar.gz'
+    cmd 'echo "689148621a2eaa734497b12bed1c5202 openssh-10.0p1.tar.gz" \
+    | md5sum -c'
     cmd 'tar -xf openssh-10.0p1.tar.gz'
     cmd 'cd openssh-10.0p1'
     cmd "install -v -g sys -m700 -d /var/lib/sshd &&
@@ -1309,6 +1262,608 @@ HOME_URL="https://www.linuxfromscratch.org/lfs/"
 RELEASE_TYPE="stable"
 EOF'
     place_marker "lfs-release"
+fi
+
+if ! marker_exists "which" ; then
+    cmd 'wget https://ftp.gnu.org/gnu/which/which-2.23.tar.gz'
+    cmd 'echo "689148621a2eaa734497b12bed1c5202 openssh-10.0p1.tar.gz" \
+    | md5sum -c'
+    cmd 'tar -xf which-2.23.tar.gz'
+    cmd 'cd which-2.23'
+    cmd './configure --prefix=/usr &&
+make'
+    cmd 'make install'
+    cmd 'cd /sources'
+    cmd 'rm -rf which-2.23'
+    place_marker "which"
+fi
+
+if ! marker_exists "zsh" ; then
+    cmd 'wget https://www.zsh.org/pub/zsh-5.9.tar.xz'
+    cmd 'echo "182e37ca3fe3fa6a44f69ad462c5c30e zsh-5.9.tar.xz" \
+    | md5sum -c'
+    cmd 'tar -xf zsh-5.9.tar.xz'
+    cmd 'cd zsh-5.9'
+    cmd "sed -e 's/set_from_init_file/texinfo_&/' \\
+    -i Doc/Makefile.in"
+    cmd "sed -e 's/^main/int &/'      \\
+    -e 's/exit(/return(/'    \\
+    -i aczsh.m4 configure.ac &&
+sed -e 's/test = /&(char**)/' \\
+    -i configure.ac           &&
+autoconf"
+    cmd "sed -e 's|/etc/z|/etc/zsh/z|g' \\
+    -i Doc/*.*"
+    cmd './configure --prefix=/usr            \
+            --sysconfdir=/etc/zsh    \
+            --enable-etcdir=/etc/zsh \
+            --enable-cap             \
+            --enable-gdbm            &&
+make                                 &&
+makeinfo  Doc/zsh.texi --html      -o Doc/html &&
+makeinfo  Doc/zsh.texi --plaintext -o zsh.txt  &&
+makeinfo  Doc/zsh.texi --html --no-split --no-headers -o zsh.html'
+    cmd 'make install                                                    &&
+make infodir=/usr/share/info install.info                       &&
+make htmldir=/usr/share/doc/zsh-5.9/html install.html           &&
+install -v -m644 zsh.{html,txt} Etc/FAQ /usr/share/doc/zsh-5.9'
+    cmd 'cat >> /etc/shells << "EOF"
+/bin/zsh
+EOF'
+    cmd 'cd /sources'
+    cmd 'rm -rf zsh-5.9'
+    place_marker "zsh"
+fi
+
+if ! marker_exists "libunistring" ; then
+    cmd 'wget https://ftp.gnu.org/gnu/libunistring/libunistring-1.3.tar.xz'
+    cmd 'echo "57dfd9e4eba93913a564aa14eab8052e libunistring-1.3.tar.xz" \
+    | md5sum -c'
+    cmd 'tar -xf libunistring-1.3.tar.xz'
+    cmd 'cd libunistring-1.3'
+    cmd './configure --prefix=/usr    \
+            --disable-static \
+            --docdir=/usr/share/doc/libunistring-1.3 &&
+make'
+    cmd 'make install'
+    cmd 'cd /sources'
+    cmd 'rm -rf libunistring-1.3'
+    place_marker "libunistring"
+fi
+
+if ! marker_exists "libidn2" ; then
+    cmd 'wget https://ftp.gnu.org/gnu/libidn/libidn2-2.3.8.tar.gz'
+    cmd 'echo "a8e113e040d57a523684e141970eea7a libidn2-2.3.8.tar.gz" \
+    | md5sum -c'
+    cmd 'tar -xf libidn2-2.3.8.tar.gz'
+    cmd 'cd libidn2-2.3.8'
+    cmd './configure --prefix=/usr --disable-static &&
+make'
+    cmd 'make install'
+    cmd 'cd /sources'
+    cmd 'rm -rf libidn2-2.3.8'
+    place_marker "libidn2"
+fi
+
+if ! marker_exists "libpsl" ; then
+    cmd 'wget https://github.com/rockdaboot/libpsl/releases/download/0.21.5/libpsl-0.21.5.tar.gz'
+    cmd 'echo "870a798ee9860b6e77896548428dba7b libpsl-0.21.5.tar.gz" \
+    | md5sum -c'
+    cmd 'tar -xf libpsl-0.21.5.tar.gz'
+    cmd 'cd libpsl-0.21.5'
+    cmd 'mkdir build &&
+cd    build &&
+meson setup --prefix=/usr --buildtype=release &&
+ninja'
+    cmd 'ninja install'
+    cmd 'cd /sources'
+    cmd 'rm -rf libpsl-0.21.5'
+    place_marker "libpsl"
+fi
+
+if ! marker_exists "curl" ; then
+    cmd 'wget https://curl.se/download/curl-8.15.0.tar.xz'
+    cmd 'echo "b8872bb6cc5d18d03bea8ff5090b2b81 curl-8.15.0.tar.xz" \
+    | md5sum -c'
+    cmd 'tar -xf curl-8.15.0.tar.xz'
+    cmd 'cd curl-8.15.0'
+    cmd './configure --prefix=/usr    \
+            --disable-static \
+            --with-openssl   \
+            --with-ca-path=/etc/ssl/certs &&
+make'
+    cmd 'make install &&
+rm -rf docs/examples/.deps &&
+find docs \( -name Makefile\* -o  \
+                -name \*.1       -o  \
+                -name \*.3       -o  \
+                -name CMakeLists.txt \) -delete &&
+cp -v -R docs -T /usr/share/doc/curl-8.15.0'
+    cmd 'cd /sources'
+    cmd 'rm -rf curl-8.15.0'
+    place_marker "curl"
+fi
+
+if ! marker_exists "asciidoc" ; then
+    cmd 'wget https://files.pythonhosted.org/packages/source/a/asciidoc/asciidoc-10.2.1.tar.gz'
+    cmd 'echo "460824075b51381a4b5f478c60a18165 asciidoc-10.2.1.tar.gz" \
+    | md5sum -c'
+    cmd 'tar -xf asciidoc-10.2.1.tar.gz'
+    cmd 'cd asciidoc-10.2.1'
+    cmd 'pip3 wheel -w dist --no-build-isolation --no-deps --no-cache-dir $PWD'
+    cmd 'pip3 install --no-index --find-links dist --no-user asciidoc'
+    cmd 'cd /sources'
+    cmd 'rm -rf asciidoc-10.2.1'
+    place_marker "asciidoc"
+fi
+
+if ! marker_exists "icu" ; then
+    cmd 'wget https://github.com/unicode-org/icu/releases/download/release-77-1/icu4c-77_1-src.tgz'
+    cmd 'echo "bc0132b4c43db8455d2446c3bae58898 icu4c-77_1-src.tgz" \
+    | md5sum -c'
+    cmd 'tar -xf icu4c-77_1-src.tgz'
+    cmd 'cd icu'
+    cmd 'case $(uname -m) in
+  i?86) sed -e "s/U_PLATFORM_IS_LINUX_BASED/__X86_64__ \&\& &/" \
+            -i source/test/intltest/ustrtest.cpp ;;
+esac'
+    cmd 'cd source                 &&
+./configure --prefix=/usr &&
+make'
+    cmd 'make install'
+    cmd 'cd /sources'
+    cmd 'rm -rf icu'
+    place_marker "icu"
+fi
+
+if ! marker_exists "libxml2" ; then
+    cmd 'wget https://download.gnome.org/sources/libxml2/2.14/libxml2-2.14.5.tar.xz'
+    cmd 'echo "59aac4e5d1d350ba2c4bddf1f7bc5098 libxml2-2.14.5.tar.xz" \
+    | md5sum -c'
+    cmd 'tar -xf libxml2-2.14.5.tar.xz'
+    cmd 'cd libxml2-2.14.5'
+    cmd './configure --prefix=/usr     \
+            --sysconfdir=/etc \
+            --disable-static  \
+            --with-history    \
+            --with-icu        \
+            PYTHON=/usr/bin/python3 \
+            --docdir=/usr/share/doc/libxml2-2.14.5 &&
+make'
+    cmd 'make install'
+    cmd "rm -vf /usr/lib/libxml2.la &&
+sed '/libs=/s/xml2.*/xml2\"/' -i /usr/bin/xml2-config"
+    cmd 'cd /sources'
+    cmd 'rm -rf libxml2-2.14.5'
+    place_marker "libxml2"
+fi
+
+if ! marker_exists "libarchive" ; then
+    cmd 'wget https://github.com/libarchive/libarchive/releases/download/v3.8.1/libarchive-3.8.1.tar.xz'
+    cmd 'echo "80fd1a7acc4da7c7d4a5f9f96df6e3ff libarchive-3.8.1.tar.xz" \
+    | md5sum -c'
+    cmd 'tar -xf libarchive-3.8.1.tar.xz'
+    cmd 'cd libarchive-3.8.1'
+    cmd './configure --prefix=/usr --disable-static &&
+make'
+    cmd 'make install'
+    cmd 'ln -sfv bsdunzip /usr/bin/unzip'
+    cmd 'cd /sources'
+    cmd 'rm -rf libarchive-3.8.1'
+    place_marker "libarchive"
+fi
+
+if ! marker_exists "docbook-xml" ; then
+    cmd 'wget https://archive.docbook.org/xml/4.5/docbook-xml-4.5.zip'
+    cmd 'echo "03083e288e87a7e829e437358da7ef9e docbook-xml-4.5.zip" \
+    | md5sum -c'
+    cmd 'unzip docbook-xml-4.5.zip -d docbook-xml-4.5'
+    cmd 'cd docbook-xml-4.5'
+    cmd 'install -v -d -m755 /usr/share/xml/docbook/xml-dtd-4.5         &&
+install -v -d -m755 /etc/xml                                   &&
+cp -v -af --no-preserve=ownership docbook.cat *.dtd ent/ *.mod \
+    /usr/share/xml/docbook/xml-dtd-4.5'
+    cmd 'if [ ! -e /etc/xml/docbook ]; then
+    xmlcatalog --noout --create /etc/xml/docbook
+fi &&
+
+xmlcatalog --noout --add "public"                            \
+    "-//OASIS//DTD DocBook XML V4.5//EN"                     \
+    "http://www.oasis-open.org/docbook/xml/4.5/docbookx.dtd" \
+    /etc/xml/docbook &&
+
+xmlcatalog --noout --add "public"                            \
+    "-//OASIS//DTD DocBook XML CALS Table Model V4.5//EN"    \
+    "file:///usr/share/xml/docbook/xml-dtd-4.5/calstblx.dtd" \
+    /etc/xml/docbook &&
+
+xmlcatalog --noout --add "public"                            \
+    "-//OASIS//DTD XML Exchange Table Model 19990315//EN"    \
+    "file:///usr/share/xml/docbook/xml-dtd-4.5/soextblx.dtd" \
+    /etc/xml/docbook &&
+
+xmlcatalog --noout --add "public"                              \
+    "-//OASIS//ELEMENTS DocBook XML Information Pool V4.5//EN" \
+    "file:///usr/share/xml/docbook/xml-dtd-4.5/dbpoolx.mod"    \
+    /etc/xml/docbook &&
+
+xmlcatalog --noout --add "public"                                \
+    "-//OASIS//ELEMENTS DocBook XML Document Hierarchy V4.5//EN" \
+    "file:///usr/share/xml/docbook/xml-dtd-4.5/dbhierx.mod"      \
+    /etc/xml/docbook &&
+
+xmlcatalog --noout --add "public"                            \
+    "-//OASIS//ELEMENTS DocBook XML HTML Tables V4.5//EN"    \
+    "file:///usr/share/xml/docbook/xml-dtd-4.5/htmltblx.mod" \
+    /etc/xml/docbook &&
+
+xmlcatalog --noout --add "public"                           \
+    "-//OASIS//ENTITIES DocBook XML Notations V4.5//EN"     \
+    "file:///usr/share/xml/docbook/xml-dtd-4.5/dbnotnx.mod" \
+    /etc/xml/docbook &&
+
+xmlcatalog --noout --add "public"                                \
+    "-//OASIS//ENTITIES DocBook XML Character Entities V4.5//EN" \
+    "file:///usr/share/xml/docbook/xml-dtd-4.5/dbcentx.mod"      \
+    /etc/xml/docbook &&
+
+xmlcatalog --noout --add "public"                                         \
+    "-//OASIS//ENTITIES DocBook XML Additional General Entities V4.5//EN" \
+    "file:///usr/share/xml/docbook/xml-dtd-4.5/dbgenent.mod"              \
+    /etc/xml/docbook &&
+
+xmlcatalog --noout --add "rewriteSystem"        \
+    "http://www.oasis-open.org/docbook/xml/4.5" \
+    "file:///usr/share/xml/docbook/xml-dtd-4.5" \
+    /etc/xml/docbook &&
+
+xmlcatalog --noout --add "rewriteURI"           \
+    "http://www.oasis-open.org/docbook/xml/4.5" \
+    "file:///usr/share/xml/docbook/xml-dtd-4.5" \
+    /etc/xml/docbook'
+    cmd 'if [ ! -e /etc/xml/catalog ]; then
+    xmlcatalog --noout --create /etc/xml/catalog
+fi &&
+
+xmlcatalog --noout --add "delegatePublic" \
+    "-//OASIS//ENTITIES DocBook XML"      \
+    "file:///etc/xml/docbook"             \
+    /etc/xml/catalog                      &&
+
+xmlcatalog --noout --add "delegatePublic" \
+    "-//OASIS//DTD DocBook XML"           \
+    "file:///etc/xml/docbook"             \
+    /etc/xml/catalog                      &&
+
+xmlcatalog --noout --add "delegateSystem" \
+    "http://www.oasis-open.org/docbook/"  \
+    "file:///etc/xml/docbook"             \
+    /etc/xml/catalog                      &&
+
+xmlcatalog --noout --add "delegateURI"    \
+    "http://www.oasis-open.org/docbook/"  \
+    "file:///etc/xml/docbook"             \
+    /etc/xml/catalog'
+    cmd 'for DTDVERSION in 4.1.2 4.2 4.3 4.4
+do
+    xmlcatalog --noout --add "public"                                  \
+    "-//OASIS//DTD DocBook XML V$DTDVERSION//EN"                     \
+    "http://www.oasis-open.org/docbook/xml/$DTDVERSION/docbookx.dtd" \
+    /etc/xml/docbook
+
+    xmlcatalog --noout --add "rewriteSystem"              \
+    "http://www.oasis-open.org/docbook/xml/$DTDVERSION" \
+    "file:///usr/share/xml/docbook/xml-dtd-4.5"         \
+    /etc/xml/docbook
+
+    xmlcatalog --noout --add "rewriteURI"                 \
+    "http://www.oasis-open.org/docbook/xml/$DTDVERSION" \
+    "file:///usr/share/xml/docbook/xml-dtd-4.5"         \
+    /etc/xml/docbook
+
+    xmlcatalog --noout --add "delegateSystem"              \
+    "http://www.oasis-open.org/docbook/xml/$DTDVERSION/" \
+    "file:///etc/xml/docbook"                            \
+    /etc/xml/catalog
+
+    xmlcatalog --noout --add "delegateURI"                 \
+    "http://www.oasis-open.org/docbook/xml/$DTDVERSION/" \
+    "file:///etc/xml/docbook"                            \
+    /etc/xml/catalog
+done'
+    cmd 'cd /sources'
+    cmd 'rm -rf docbook-xml-4.5'
+    place_marker "docbook-xml"
+fi
+
+if ! marker_exists "docbook-xsl-nons" ; then
+    cmd 'wget https://github.com/docbook/xslt10-stylesheets/releases/download/release/1.79.2/docbook-xsl-nons-1.79.2.tar.bz2'
+    cmd 'wget https://www.linuxfromscratch.org/patches/blfs/12.4/docbook-xsl-nons-1.79.2-stack_fix-1.patch'
+    cmd 'echo "2666d1488d6ced1551d15f31d7ed8c38 docbook-xsl-nons-1.79.2.tar.bz2" \
+    | md5sum -c'
+    cmd 'tar -xf docbook-xsl-nons-1.79.2.tar.bz2'
+    cmd 'cd docbook-xsl-nons-1.79.2'
+    cmd 'patch -Np1 -i ../docbook-xsl-nons-1.79.2-stack_fix-1.patch'
+    cmd 'install -v -m755 -d /usr/share/xml/docbook/xsl-stylesheets-nons-1.79.2 &&
+cp -v -R VERSION assembly common eclipse epub epub3 extensions fo        \
+         highlighting html htmlhelp images javahelp lib manpages params  \
+         profiling roundtrip slides template tests tools webhelp website \
+         xhtml xhtml-1_1 xhtml5                                          \
+    /usr/share/xml/docbook/xsl-stylesheets-nons-1.79.2 &&
+ln -s VERSION /usr/share/xml/docbook/xsl-stylesheets-nons-1.79.2/VERSION.xsl &&
+install -v -m644 -D README \
+                    /usr/share/doc/docbook-xsl-nons-1.79.2/README.txt &&
+install -v -m644    RELEASE-NOTES* NEWS* \
+                    /usr/share/doc/docbook-xsl-nons-1.79.2'
+    cmd 'if [ ! -d /etc/xml ]; then install -v -m755 -d /etc/xml; fi &&
+if [ ! -f /etc/xml/catalog ]; then
+    xmlcatalog --noout --create /etc/xml/catalog
+fi &&
+
+xmlcatalog --noout --add "rewriteSystem"                         \
+            "http://cdn.docbook.org/release/xsl-nons/1.79.2"     \
+            "/usr/share/xml/docbook/xsl-stylesheets-nons-1.79.2" \
+            /etc/xml/catalog &&
+
+xmlcatalog --noout --add "rewriteSystem"                         \
+            "https://cdn.docbook.org/release/xsl-nons/1.79.2"    \
+            "/usr/share/xml/docbook/xsl-stylesheets-nons-1.79.2" \
+            /etc/xml/catalog &&
+
+xmlcatalog --noout --add "rewriteURI"                            \
+            "http://cdn.docbook.org/release/xsl-nons/1.79.2"     \
+            "/usr/share/xml/docbook/xsl-stylesheets-nons-1.79.2" \
+            /etc/xml/catalog &&
+
+xmlcatalog --noout --add "rewriteURI"                            \
+            "https://cdn.docbook.org/release/xsl-nons/1.79.2"    \
+            "/usr/share/xml/docbook/xsl-stylesheets-nons-1.79.2" \
+            /etc/xml/catalog &&
+
+xmlcatalog --noout --add "rewriteSystem"                         \
+            "http://cdn.docbook.org/release/xsl-nons/current"    \
+            "/usr/share/xml/docbook/xsl-stylesheets-nons-1.79.2" \
+            /etc/xml/catalog &&
+
+xmlcatalog --noout --add "rewriteSystem"                         \
+            "https://cdn.docbook.org/release/xsl-nons/current"   \
+            "/usr/share/xml/docbook/xsl-stylesheets-nons-1.79.2" \
+            /etc/xml/catalog &&
+
+xmlcatalog --noout --add "rewriteURI"                            \
+            "http://cdn.docbook.org/release/xsl-nons/current"    \
+            "/usr/share/xml/docbook/xsl-stylesheets-nons-1.79.2" \
+            /etc/xml/catalog &&
+
+xmlcatalog --noout --add "rewriteURI"                            \
+            "https://cdn.docbook.org/release/xsl-nons/current"   \
+            "/usr/share/xml/docbook/xsl-stylesheets-nons-1.79.2" \
+            /etc/xml/catalog &&
+
+xmlcatalog --noout --add "rewriteSystem"                         \
+            "http://docbook.sourceforge.net/release/xsl/current" \
+            "/usr/share/xml/docbook/xsl-stylesheets-nons-1.79.2" \
+            /etc/xml/catalog &&
+
+xmlcatalog --noout --add "rewriteURI"                            \
+            "http://docbook.sourceforge.net/release/xsl/current" \
+            "/usr/share/xml/docbook/xsl-stylesheets-nons-1.79.2" \
+            /etc/xml/catalog'
+    cmd 'cd /sources'
+    cmd 'rm -rf docbook-xsl-nons-1.79.2'
+    place_marker "docbook-xsl-nons"
+fi
+
+if ! marker_exists "libxslt" ; then
+    cmd 'wget https://download.gnome.org/sources/libxslt/1.1/libxslt-1.1.43.tar.xz'
+    cmd 'echo "5dc0179c81be7a3082b43030ecfdebd4 libxslt-1.1.43.tar.xz" \
+    | md5sum -c'
+    cmd 'tar -xf libxslt-1.1.43.tar.xz'
+    cmd 'cd libxslt-1.1.43'
+    cmd './configure --prefix=/usr    \
+            --disable-static \
+            --docdir=/usr/share/doc/libxslt-1.1.43 &&
+make'
+    cmd 'make install'
+    cmd 'cd /sources'
+    cmd 'rm -rf libxslt-1.1.43'
+    place_marker "libxslt"
+fi
+
+if ! marker_exists "xmlto" ; then
+    cmd 'wget https://pagure.io/xmlto/archive/0.0.29/xmlto-0.0.29.tar.gz'
+    cmd 'echo "556f2642cdcd005749bd4c08bc621c37 xmlto-0.0.29.tar.gz" \
+    | md5sum -c'
+    cmd 'tar -xf xmlto-0.0.29.tar.gz'
+    cmd 'cd xmlto-0.0.29'
+    cmd 'autoreconf -fiv                                  &&
+LINKS="/usr/bin/links" ./configure --prefix=/usr &&
+make'
+    cmd 'make install'
+    cmd 'cd /sources'
+    cmd 'rm -rf xmlto-0.0.29'
+    place_marker "xmlto"
+fi
+
+if ! marker_exists "git" ; then
+    cmd 'wget https://www.kernel.org/pub/software/scm/git/git-2.50.1.tar.xz'
+    cmd 'echo "2cb96fae126d66f8ff23a68f8dd5d748 git-2.50.1.tar.xz" \
+    | md5sum -c'
+    cmd 'tar -xf git-2.50.1.tar.xz'
+    cmd 'cd git-2.50.1'
+    cmd './configure --prefix=/usr \
+            --with-gitconfig=/etc/gitconfig \
+            --with-python=python3 &&
+make'
+    cmd 'make man'
+    cmd 'make perllibdir=/usr/lib/perl5/5.42/site_perl install'
+    cmd 'make install-man'
+    cmd 'cd /sources'
+    cmd 'rm -rf git-2.50.1'
+    place_marker "git"
+fi
+
+if ! marker_exists "libuv" ; then
+    cmd 'wget https://dist.libuv.org/dist/v1.51.0/libuv-v1.51.0.tar.gz'
+    cmd 'echo "5e0109e19c3fed3a8cbecb958de39afa libuv-v1.51.0.tar.gz" \
+    | md5sum -c'
+    cmd 'tar -xf libuv-v1.51.0.tar.gz'
+    cmd 'cd libuv-v1.51.0'
+    cmd 'sh autogen.sh                              &&
+./configure --prefix=/usr --disable-static &&
+make '
+    cmd 'make install'
+    cmd 'cd /sources'
+    cmd 'rm -rf libuv-v1.51.0'
+    place_marker "libuv"
+fi
+
+if ! marker_exists "nghttp2" ; then
+    cmd 'wget https://github.com/nghttp2/nghttp2/releases/download/v1.66.0/nghttp2-1.66.0.tar.xz'
+    cmd 'echo "295c22437cc44e1634a2b82ea93df747 nghttp2-1.66.0.tar.xz" \
+    | md5sum -c'
+    cmd 'tar -xf nghttp2-1.66.0.tar.xz'
+    cmd 'cd nghttp2-1.66.0'
+    cmd './configure --prefix=/usr     \
+            --disable-static  \
+            --enable-lib-only \
+            --docdir=/usr/share/doc/nghttp2-1.66.0 &&
+make'
+    cmd 'make install'
+    cmd 'cd /sources'
+    cmd 'rm -rf nghttp2-1.66.0'
+    place_marker "nghttp2"
+fi
+
+if ! marker_exists "cmake" ; then
+    cmd 'wget https://cmake.org/files/v4.1/cmake-4.1.0.tar.gz'
+    cmd 'echo "80ae27faba5068c8ec12c77bf00e6db3 cmake-4.1.0.tar.gz" \
+    | md5sum -c'
+    cmd 'tar -xf cmake-4.1.0.tar.gz'
+    cmd 'cd cmake-4.1.0'
+    cmd "sed -i '/\"lib64\"/s/64//' Modules/GNUInstallDirs.cmake &&
+./bootstrap --prefix=/usr        \\
+            --system-libs        \\
+            --mandir=/share/man  \\
+            --no-system-jsoncpp  \\
+            --no-system-cppdap   \\
+            --no-system-librhash \\
+            --docdir=/share/doc/cmake-4.1.0 &&
+make"
+    cmd 'make install'
+    cmd 'cd /sources'
+    cmd 'rm -rf cmake-4.1.0'
+    place_marker "cmake"
+fi
+
+if ! marker_exists "redis" ; then
+    cmd 'wget -O redis-8.6.3.tar.gz https://github.com/redis/redis/archive/refs/tags/8.6.3.tar.gz'
+    cmd 'tar -xf redis-8.6.3.tar.gz'
+    cmd 'cd redis-8.6.3'
+    cmd 'export BUILD_TLS=yes'
+    cmd 'export BUILD_WITH_MODULES=no'
+    cmd 'export INSTALL_RUST_TOOLCHAIN=no'
+    cmd 'export DISABLE_WERRORS=yes'
+    cmd 'make PREFIX=/usr -j "$(nproc)" all'
+    cmd './src/redis-server --version'
+    cmd './src/redis-cli --version'
+    cmd 'make PREFIX=/usr install'
+    cmd 'cd /sources'
+    cmd 'rm -rf redis-8.6.3'
+    place_marker "redis"
+fi
+
+if ! marker_exists "mlflow" ; then
+    cmd 'pip3 install --upgrade "mlflow>=3.1"'
+    place_marker "mlflow"
+fi
+
+if ! marker_exists "ray" ; then
+    cmd 'pip3 install -U "ray[data,train,tune,serve]"'
+    place_marker "ray"
+fi
+
+if ! marker_exists "torch" ; then
+    cmd 'pip3 install torch torchvision'
+    place_marker "torch"
+fi
+
+if ! marker_exists "llvm" ; then
+    cmd 'git clone --depth 1 --branch release/20.x https://github.com/llvm/llvm-project llvm-project-20'
+    cmd 'cd llvm-project-20'
+    cmd 'git checkout release/20.x'
+
+    # cmd 'wget https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/llvm-20.1.8.src.tar.xz'
+    # cmd 'echo "78040509eb91309b4ec2edfe12cd20d8 llvm-20.1.8.src.tar.xz" \
+    # | md5sum -c'
+    # cmd 'wget https://anduin.linuxfromscratch.org/BLFS/llvm/llvm-cmake-20.1.8.src.tar.xz'
+    # cmd 'echo "5bfb8f4b4a2b3ccffca0d2406e4cdcc6 llvm-cmake-20.1.8.src.tar.xz" \
+    # | md5sum -c'
+    # cmd 'wget https://anduin.linuxfromscratch.org/BLFS/llvm/llvm-third-party-20.1.8.src.tar.xz'
+    # cmd 'echo "2ffd8624b3cbddf55a4e74a7d8ea89fa llvm-third-party-20.1.8.src.tar.xz" \
+    # | md5sum -c'
+    # cmd 'wget https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/clang-20.1.8.src.tar.xz'
+    # cmd 'echo "62a0500bb932868061607cde0c01f584 clang-20.1.8.src.tar.xz" \
+    # | md5sum -c'
+    # cmd 'tar -xf llvm-20.1.8.src.tar.xz'
+    # cmd 'cd llvm-20.1.8.src'
+#     cmd "tar -xf ../llvm-cmake-20.1.8.src.tar.xz                              &&
+# tar -xf ../llvm-third-party-20.1.8.src.tar.xz                        &&
+# sed '/LLVM_COMMON_CMAKE_UTILS/s@../cmake@cmake-20.1.8.src@'          \\
+#     -i CMakeLists.txt                                                &&
+# sed '/LLVM_THIRD_PARTY_DIR/s@../third-party@third-party-20.1.8.src@' \\
+#     -i cmake/modules/HandleLLVMOptions.cmake"
+#     cmd 'tar -xf ../clang-20.1.8.src.tar.xz -C tools &&
+# mv tools/clang-20.1.8.src tools/clang'
+    cmd $'grep -rl \'#!.*python\' | xargs sed -i \'1s/python$/python3/\''
+    cmd "sed 's/utility/tool/' -i utils/FileCheck/CMakeLists.txt"
+    cmd 'mkdir -v build &&
+cd       build &&
+CC=gcc CXX=g++                             \
+cmake ../llvm                              \
+    -D CMAKE_INSTALL_PREFIX=/usr           \
+    -D CMAKE_SKIP_INSTALL_RPATH=ON         \
+    -D LLVM_ENABLE_FFI=ON                  \
+    -D CMAKE_BUILD_TYPE=Release            \
+    -D LLVM_BUILD_LLVM_DYLIB=ON            \
+    -D LLVM_LINK_LLVM_DYLIB=ON             \
+    -D LLVM_ENABLE_PROJECTS="lld;clang"    \
+    -D LLVM_ENABLE_RTTI=ON                 \
+    -D LLVM_ENABLE_LIBXML2=OFF             \
+    -D LLVM_ENABLE_LIBEDIT=OFF             \
+    -D LLVM_ENABLE_ASSERTIONS=ON           \
+    -D LLVM_PARALLEL_LINK_JOBS=1           \
+    -D LLVM_BINUTILS_INCDIR=/usr/include   \
+    -D LLVM_INCLUDE_BENCHMARKS=OFF         \
+    -D CLANG_DEFAULT_PIE_ON_LINUX=ON       \
+    -D CLANG_CONFIG_FILE_SYSTEM_DIR=/etc/clang \
+    -W no-dev -G Ninja                     &&
+ninja'
+    cmd 'ninja install'
+    cmd 'mkdir -pv /etc/clang &&
+for i in clang clang++; do
+    echo -fstack-protector-strong > /etc/clang/$i.cfg
+done'
+    cmd 'cd /sources'
+    cmd 'rm -rf llvm-project-20'
+    place_marker "llvm"
+fi
+
+if ! marker_exists "zig" ; then
+    cmd 'wget https://ziglang.org/download/0.15.2/zig-0.15.2.tar.xz'
+    cmd 'tar -xf zig-0.15.2.tar.xz'
+    cmd 'cd zig-0.15.2'
+    cmd 'mkdir build'
+    cmd 'cd build'
+    cmd 'cmake .. \
+    -D CMAKE_INSTALL_PREFIX=/usr \
+    -D CMAKE_BUILD_TYPE=Release \
+    -D ZIG_EXTRA_BUILD_ARGS="--maxrss;8000000000"'
+    cmd 'make'
+    cmd 'make install'
+    cmd 'cd /sources'
+    cmd 'rm -rf zig-0.15.2'
+    place_marker "zig"
 fi
 
 cmd 'exit'
