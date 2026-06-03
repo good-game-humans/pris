@@ -8,7 +8,11 @@ and replays them through a browser-based terminal renderer with a real-time
 
 ```
 QEMU VM (LFS build)
-  └─ serial console → pris.log
+  └─ serial console
+                          ↓
+                 pris-crlf-filter   (Zig: \r\n→\n, bare \r→\n+0x01 sentinel)
+                          ↓
+                 ts → pris.log      (timestamps each line)
                           ↓
                  pris-chunk-writer  (Zig, static binary)
                           ↓
@@ -17,7 +21,7 @@ QEMU VM (LFS build)
                           ↓
               pris-screen (browser)
               ├─ main.ts            (TypeScript)
-              └─ pris-screen.wasm   (Zig → WASM)
+              └─ pris-screen.wasm   (Zig → WASM, terminal emulator)
 ```
 
 ## Components
@@ -46,6 +50,22 @@ cd code/pris-chunk-writer
 zig build -Dtarget=x86_64-linux-musl
 ```
 Output: `zig-out/bin/pris-chunk-writer` — copy to `~/pris/bin/` on EC2.
+
+### `code/pris-crlf-filter/`
+Zig executable (`src/main.zig`) in the `run-pris.sh` pipeline between QEMU and
+`ts`. Byte-streams the serial output: collapses `\r\n` → `\n`, and turns a bare
+carriage return into `\n` + a `0x01` sentinel. The newline lets `ts` timestamp
+and stream each update (carriage-return-only progress like ninja/LLVM keeps
+flowing); the sentinel tells pris-screen the break was a carriage return, so it
+overwrites in place instead of scrolling. (`tr` could stream but is 1→1 and
+can't emit the sentinel; `sed`/`perl` can emit it but buffer until a newline.)
+
+Cross-compile for Linux (x86_64) from Mac:
+```
+cd code/pris-crlf-filter
+zig build -Dtarget=x86_64-linux-musl
+```
+Output: `zig-out/bin/pris-crlf-filter` — copy to `~/pris/bin/` on EC2.
 
 ### `code/pris-screen/`
 Browser-based terminal renderer.

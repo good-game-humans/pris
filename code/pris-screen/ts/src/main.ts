@@ -38,7 +38,7 @@ let wasmMemory: Uint8Array | null = null;
 let currentChunk = 0;
 let fetchingChunk = false;
 let reachedEnd = false;
-let lastFetchAttemptMs = 0;
+let nextFetchMs = 0;
 let knownStartTime = 0;
 
 async function pollManifest(): Promise<void> {
@@ -106,7 +106,8 @@ async function fetchAndFillBuffer(): Promise<void> {
   try {
     const response = await fetch(chunkFilename(currentChunk), { cache: 'no-store' });
     if (!response.ok) {
-      // No more chunks available yet
+      // No chunk available yet — back off briefly before retrying.
+      nextFetchMs = Date.now() + POLL_INTERVAL_MS;
       fetchingChunk = false;
       return;
     }
@@ -129,8 +130,9 @@ async function fetchAndFillBuffer(): Promise<void> {
     wasm.markBufferReady(bufferIndex, writeLen);
 
     currentChunk++;
+    nextFetchMs = 0; // data was available — keep fetching to fill buffers
   } catch {
-    // Fetch failed, will retry
+    nextFetchMs = Date.now() + POLL_INTERVAL_MS; // back off on error
   }
 
   fetchingChunk = false;
@@ -141,9 +143,9 @@ function renderFrame(): void {
 
   const now = Date.now();
 
-  // Fill buffers if needed, throttled by POLL_INTERVAL_MS
-  if (wasm.needsBuffer() && !fetchingChunk && now - lastFetchAttemptMs >= POLL_INTERVAL_MS) {
-    lastFetchAttemptMs = now;
+  // Keep buffers full: fetch back-to-back while chunks are available, backing
+  // off (POLL_INTERVAL_MS) only when a fetch finds no chunk yet.
+  if (wasm.needsBuffer() && !fetchingChunk && now >= nextFetchMs) {
     fetchAndFillBuffer();
   }
 

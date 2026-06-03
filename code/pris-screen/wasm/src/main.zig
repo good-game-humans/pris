@@ -135,15 +135,26 @@ var manifest_start_ms: u64 = 0;
 var manifest_duration_ms: u64 = 0;
 var run_start_epoch_ms: u64 = 0;
 var reached_end: bool = false;
-var last_status_line_count: u32 = 0;
 
-// Cursor
+// Cursor (blink)
 var cursor_visible: bool = true;
 var last_cursor_toggle_ms: u64 = 0;
 const CURSOR_BLINK_MS: u64 = 500;
 
+// --- Terminal emulation state (persists across ts-lines / chunk boundaries) ---
+// The screen grid is driven like a real terminal: a cursor position plus the
+// control sequences emitted by the build (\r, \n, ESC M, ESC [ J/K/G, ESC ( 0).
+const SENTINEL: u8 = 0x01; // a ts-line beginning with this means the preceding
+//                            break was a carriage return, not a newline.
+var cursor_row: u32 = 0;
+var cursor_col: u32 = 0;
+var term_color: Color = .default; // current SGR color, persists until changed
+var term_bold: bool = false;
+var charset_dec: bool = false; // true while DEC special-graphics (ESC ( 0) active
+var pending_newline: bool = false; // a line break is deferred to the next ts-line
+
 // Pending command: set when a "[pris:/dir]> " prompt line is seen; the next
-// line gets appended to the "> " line rather than added as a new one.
+// ts-line is the command, drawn on the same line (after "> ") to look typed.
 var pending_command: bool = false;
 
 // Pixel buffer (RGBA format for canvas)
@@ -155,7 +166,7 @@ var fade_colors: [N_COLORS][N_FADE_STEPS]u32 = undefined;
 // Set when an unrecognised true-color RGB is encountered during parsing
 var unknown_color_encountered: bool = false;
 
-// Screen state: lines of text with per-character color and ages
+// Screen state: the "work" grid the terminal writes into.
 const MAX_SCREEN_LINES: u32 = N_ROWS;
 var screen_lines: [MAX_SCREEN_LINES][N_COLS]u8 = undefined;
 var screen_line_colors: [MAX_SCREEN_LINES][N_COLS]Color = undefined;
@@ -163,6 +174,20 @@ var screen_line_bold: [MAX_SCREEN_LINES][N_COLS]bool = undefined;
 var screen_line_lengths: [MAX_SCREEN_LINES]u32 = undefined;
 var screen_line_ages: [MAX_SCREEN_LINES]u32 = undefined;
 var num_screen_lines: u32 = 0;
+
+// Display grid: what renderScreen actually paints. The work grid is copied here
+// (present) only at completed frames — at a synchronized-update end (ESC[?2026l)
+// or, for unwrapped output, after each line. This means a half-erased frame is
+// never shown, so identical redraws produce no flicker.
+var disp_lines: [MAX_SCREEN_LINES][N_COLS]u8 = undefined;
+var disp_colors: [MAX_SCREEN_LINES][N_COLS]Color = undefined;
+var disp_bold: [MAX_SCREEN_LINES][N_COLS]bool = undefined;
+var disp_lengths: [MAX_SCREEN_LINES]u32 = undefined;
+var disp_ages: [MAX_SCREEN_LINES]u32 = undefined;
+var disp_num: u32 = 0;
+var disp_cursor_row: u32 = 0;
+var disp_cursor_col: u32 = 0;
+var sync_active: bool = false; // inside a synchronized update (ESC[?2026h..l)
 
 fn lerp(a: u32, b: u32, t: u32, steps: u32) u32 {
     if (steps == 0) return a;
@@ -257,9 +282,39 @@ fn fillRect(x: u32, y: u32, w: u32, h: u32, rgb: u32) void {
     }
 }
 
+// Box-drawing glyphs live at font indices 95+ and are stored in the grid as
+// byte codes BOX_BASE..BOX_BASE+N_BOX_GLYPHS-1.
+pub const BOX_BASE: u8 = 0x80;
+pub const FIRST_BOX_GLYPH: usize = 95;
+pub const N_BOX_GLYPHS: usize = 11;
+
+// Map a DEC special-graphics byte to its box glyph code (order matches the
+// BOX_GLYPHS list in code/util/rasterize_font.py). Non-box bytes pass through.
+fn decMap(c: u8) u8 {
+    return switch (c) {
+        'q' => BOX_BASE + 0, // ─
+        'x' => BOX_BASE + 1, // │
+        't' => BOX_BASE + 2, // ├
+        'm' => BOX_BASE + 3, // └
+        'k' => BOX_BASE + 4, // ┐
+        'l' => BOX_BASE + 5, // ┌
+        'j' => BOX_BASE + 6, // ┘
+        'u' => BOX_BASE + 7, // ┤
+        'w' => BOX_BASE + 8, // ┬
+        'v' => BOX_BASE + 9, // ┴
+        'n' => BOX_BASE + 10, // ┼
+        else => c, // space and others render as-is
+    };
+}
+
 fn drawChar(c: u8, x: u32, y: u32, rgb: u32, bold: bool) void {
-    if (c < 32 or c > 126) return;
-    const idx: usize = c - 32;
+    const is_box = c >= BOX_BASE and c < BOX_BASE + N_BOX_GLYPHS;
+    const idx: usize = if (is_box)
+        FIRST_BOX_GLYPH + (c - BOX_BASE)
+    else if (c >= 32 and c <= 126)
+        c - 32
+    else
+        return;
     const char_data = if (bold) font.font_data_bold[idx] else font.font_data[idx];
 
     for (0..font.FONT_H) |row| {
@@ -272,6 +327,20 @@ fn drawChar(c: u8, x: u32, y: u32, rgb: u32, bold: bool) void {
                     rgb,
                     alpha,
                 );
+            }
+        }
+    }
+
+    // Rows are drawn LINE_H (= FONT_H + 1) apart, so a 1px line-spacing gap sits
+    // below each glyph. For box rules that would break vertical connections, so
+    // repeat the glyph's bottom row into that gap. Only down-connecting glyphs
+    // have ink in their bottom row, leaving horizontals/up-corners untouched.
+    if (is_box) {
+        const last = font.FONT_H - 1;
+        for (0..font.FONT_W) |col| {
+            const alpha = char_data[last][col];
+            if (alpha > 0) {
+                blendPixel(x + @as(u32, @intCast(col)), y + font.FONT_H, rgb, alpha);
             }
         }
     }
@@ -355,282 +424,274 @@ fn parseSgr(params: []const u8, cur_color: *Color, cur_bold: *bool) void {
     }
 }
 
-// Handle a single decoded CSI sequence, updating column, color, and line buffers.
-fn handleCsi(
-    cmd: u8,
-    params: []const u8,
-    col: *u32,
-    cur_color: *Color,
-    cur_bold: *bool,
-    chars: *[N_COLS]u8,
-    colors: *[N_COLS]Color,
-) void {
+// Parse the leading decimal parameter of a CSI sequence, or `default` if absent.
+fn csiNum(params: []const u8, default: u32) u32 {
+    var n: u32 = 0;
+    var has_digit = false;
+    for (params) |c| {
+        if (c >= '0' and c <= '9') {
+            n = n * 10 + (c - '0');
+            has_digit = true;
+        } else break;
+    }
+    return if (has_digit) n else default;
+}
+
+// Handle a decoded CSI sequence against the terminal cursor and grid.
+fn handleCsi(cmd: u8, params: []const u8) void {
     switch (cmd) {
-        'm' => parseSgr(params, cur_color, cur_bold),
-        'G' => {
-            // Cursor to column N (1-based); ESC[G and ESC[1G both move to column 0
-            var n: u32 = 0;
-            var has_digit = false;
-            for (params) |c| {
-                if (c >= '0' and c <= '9') {
-                    n = n * 10 + (c - '0');
-                    has_digit = true;
-                } else break;
-            }
-            const col_1based = if (has_digit and n > 0) n else 1;
-            col.* = col_1based - 1;
+        'm' => parseSgr(params, &term_color, &term_bold),
+        'G' => { // cursor to column N (1-based); ESC[G / ESC[1G => column 0
+            const n = csiNum(params, 1);
+            cursor_col = @min(if (n > 0) n - 1 else 0, N_COLS - 1);
         },
-        'K' => {
-            // Erase in line: 0 (default) = cursor to end, 2 = entire line
-            var n: u32 = 0;
-            var has_digit = false;
-            for (params) |c| {
-                if (c >= '0' and c <= '9') {
-                    n = n * 10 + (c - '0');
-                    has_digit = true;
-                } else break;
-            }
-            const mode = if (has_digit) n else 0;
-            if (mode == 2) {
-                @memset(chars, ' ');
-                @memset(colors, Color.default);
-                col.* = 0;
-            } else {
-                // mode 0: erase from cursor to end
-                var j = col.*;
-                while (j < N_COLS) : (j += 1) {
-                    chars[j] = ' ';
-                    colors[j] = .default;
-                }
+        'A' => { // cursor up N (default 1)
+            var k: u32 = csiNum(params, 1);
+            while (k > 0) : (k -= 1) cursorUp();
+        },
+        'K' => { // erase in line: 0 = cursor->EOL, 2 = whole line
+            if (csiNum(params, 0) == 2) clearRow(cursor_row) else eraseToEol();
+        },
+        'J' => { // erase in display: 0 = cursor->end of screen, 2 = whole screen
+            if (csiNum(params, 0) == 2) {
+                var r: u32 = 0;
+                while (r < num_screen_lines) : (r += 1) clearRow(r);
+                num_screen_lines = 0;
+                cursor_row = 0;
+                cursor_col = 0;
+            } else eraseToEos();
+        },
+        'h' => { // ESC[?2026h: begin synchronized update
+            if (std.mem.eql(u8, params, "?2026")) sync_active = true;
+        },
+        'l' => { // ESC[?2026l: end synchronized update — present the finished frame
+            if (std.mem.eql(u8, params, "?2026")) {
+                sync_active = false;
+                present();
             }
         },
-        // All other commands (J, H, n, h, p, etc.) are ignored
-        else => {},
+        else => {}, // H, n, p, etc. ignored
     }
 }
 
-const ColorState = struct {
-    color: Color = .default,
-    bold: bool = false,
-};
+// --- Terminal grid operations (cursor-addressed) ---
 
-// Process raw content bytes containing ANSI escape sequences into parallel
-// char and Color arrays of length N_COLS. Trailing spaces are trimmed.
-// Sets out_raw_consumed to the number of raw bytes consumed; stops at N_COLS
-// visible characters so the caller can wrap by re-invoking with the remainder.
-// color_state is read on entry and updated on exit, allowing callers to carry
-// color across multiple wrapped segments of the same logical line.
-fn processContent(
-    raw: []const u8,
-    out_chars: *[N_COLS]u8,
-    out_colors: *[N_COLS]Color,
-    out_bold: *[N_COLS]bool,
-    out_len: *u32,
-    out_raw_consumed: *u32,
-    color_state: *ColorState,
-) void {
-    @memset(out_chars, ' ');
-    @memset(out_colors, Color.default);
-    @memset(out_bold, false);
-
-    var col: u32 = 0;
-    var cur_color: Color = color_state.color;
-    var cur_bold: bool = color_state.bold;
-    var i: usize = 0;
-
-    while (i < raw.len) {
-        const c = raw[i];
-        if (c == 0x1b) {
-            if (i + 1 < raw.len) {
-                switch (raw[i + 1]) {
-                    '[' => {
-                        // CSI sequence: scan for final byte (0x40–0x7E)
-                        i += 2;
-                        const seq_start = i;
-                        while (i < raw.len) {
-                            const sc = raw[i];
-                            if (sc >= 0x40 and sc <= 0x7E) {
-                                handleCsi(sc, raw[seq_start..i], &col, &cur_color, &cur_bold, out_chars, out_colors);
-                                i += 1;
-                                break;
-                            }
-                            i += 1;
-                        }
-                    },
-                    ']' => {
-                        // OSC sequence: skip to BEL (0x07) or ST (ESC \)
-                        i += 2;
-                        while (i < raw.len) {
-                            if (raw[i] == 0x07) {
-                                i += 1;
-                                break;
-                            } else if (raw[i] == 0x1b and i + 1 < raw.len and raw[i + 1] == '\\') {
-                                i += 2;
-                                break;
-                            }
-                            i += 1;
-                        }
-                    },
-                    'P' => {
-                        // DCS sequence: skip to ST (ESC \)
-                        i += 2;
-                        while (i < raw.len) {
-                            if (raw[i] == 0x1b and i + 1 < raw.len and raw[i + 1] == '\\') {
-                                i += 2;
-                                break;
-                            }
-                            i += 1;
-                        }
-                    },
-                    else => i += 2, // unknown escape sequence: skip ESC + next byte
-                }
-            } else {
-                i += 1;
-            }
-        } else if (c == '\r') {
-            col = 0;
-            i += 1;
-        } else if (c < 32) {
-            // Skip other control characters
-            i += 1;
-        } else {
-            if (col < N_COLS) {
-                out_chars[col] = c;
-                out_colors[col] = cur_color;
-                out_bold[col] = cur_bold;
-                col += 1;
-                i += 1;
-            } else {
-                // Line full — stop here so caller can wrap
-                out_raw_consumed.* = @intCast(i);
-                color_state.color = cur_color;
-                color_state.bold = cur_bold;
-                var len: u32 = N_COLS;
-                while (len > 0 and out_chars[len - 1] == ' ') len -= 1;
-                out_len.* = len;
-                return;
-            }
-        }
-    }
-
-    out_raw_consumed.* = @intCast(raw.len);
-    color_state.color = cur_color;
-    color_state.bold = cur_bold;
-    // Trim trailing spaces (start from N_COLS, not col, to handle \r resets correctly)
-    var len: u32 = N_COLS;
-    while (len > 0 and out_chars[len - 1] == ' ') {
-        len -= 1;
-    }
-    out_len.* = len;
+fn clearRow(r: u32) void {
+    @memset(&screen_lines[r], ' ');
+    @memset(&screen_line_colors[r], Color.default);
+    @memset(&screen_line_bold[r], false);
+    screen_line_lengths[r] = 0;
 }
 
-// --- Screen line management ---
-
+// Scroll the whole viewport up by one row; the freed bottom row is blanked.
 fn scrollUp() void {
-    if (num_screen_lines == 0) return;
     for (0..MAX_SCREEN_LINES - 1) |i| {
-        screen_line_lengths[i] = screen_line_lengths[i + 1];
-        screen_line_ages[i] = screen_line_ages[i + 1];
         @memcpy(&screen_lines[i], &screen_lines[i + 1]);
         @memcpy(&screen_line_colors[i], &screen_line_colors[i + 1]);
         @memcpy(&screen_line_bold[i], &screen_line_bold[i + 1]);
+        screen_line_lengths[i] = screen_line_lengths[i + 1];
+        screen_line_ages[i] = screen_line_ages[i + 1];
     }
-    num_screen_lines -= 1;
+    clearRow(MAX_SCREEN_LINES - 1);
+    screen_line_ages[MAX_SCREEN_LINES - 1] = 0; // scrolled-in line fades in
 }
 
-fn addScreenLine(chars: []const u8, colors: []const Color, bolds: []const bool) void {
-    while (num_screen_lines >= MAX_SCREEN_LINES) {
+fn cursorUp() void {
+    if (cursor_row > 0) cursor_row -= 1;
+}
+
+fn cursorCr() void {
+    cursor_col = 0;
+}
+
+// Newline: column 0 of the next row, scrolling the viewport if at the bottom.
+fn cursorNewline() void {
+    cursor_col = 0;
+    if (cursor_row + 1 >= MAX_SCREEN_LINES) {
         scrollUp();
+        cursor_row = MAX_SCREEN_LINES - 1;
+    } else {
+        cursor_row += 1;
     }
-    const copy_len = @min(chars.len, N_COLS);
-    @memcpy(screen_lines[num_screen_lines][0..copy_len], chars[0..copy_len]);
-    @memcpy(screen_line_colors[num_screen_lines][0..copy_len], colors[0..copy_len]);
-    @memcpy(screen_line_bold[num_screen_lines][0..copy_len], bolds[0..copy_len]);
-    screen_line_lengths[num_screen_lines] = @intCast(copy_len);
-    screen_line_ages[num_screen_lines] = 0;
-    num_screen_lines += 1;
+    if (cursor_row + 1 > num_screen_lines) num_screen_lines = cursor_row + 1;
 }
 
-fn appendToLastScreenLine(chars: []const u8, colors: []const Color, bolds: []const bool) void {
-    if (num_screen_lines == 0) return;
-    const idx = num_screen_lines - 1;
-    var col = screen_line_lengths[idx];
-    for (chars, colors, bolds) |c, color, bold| {
-        if (col >= N_COLS) break;
-        screen_lines[idx][col] = c;
-        screen_line_colors[idx][col] = color;
-        screen_line_bold[idx][col] = bold;
-        col += 1;
+fn eraseToEol() void {
+    var j = cursor_col;
+    while (j < N_COLS) : (j += 1) {
+        screen_lines[cursor_row][j] = ' ';
+        screen_line_colors[cursor_row][j] = .default;
+        screen_line_bold[cursor_row][j] = false;
     }
-    screen_line_lengths[idx] = @min(col, N_COLS);
-    screen_line_ages[idx] = 0;
+    if (screen_line_lengths[cursor_row] > cursor_col)
+        screen_line_lengths[cursor_row] = cursor_col;
 }
 
-fn addLineWithWrap(raw: []const u8) void {
-    // Detect command prompt: a line containing "[pris:/dir]" followed by "> "
-    // Split into two visual lines: "...[pris:/dir]" and "> ", then set
-    // pending_command so the next log entry is appended after the "> ".
-    if (std.mem.indexOf(u8, raw, "[pris:")) |pi| {
-        var split: usize = pi + 6;
-        while (split < raw.len and raw[split] != ']') : (split += 1) {}
-        if (split < raw.len) {
-            var proc_chars: [N_COLS]u8 = undefined;
-            var proc_colors: [N_COLS]Color = undefined;
-            var proc_bolds: [N_COLS]bool = undefined;
-            var proc_len: u32 = 0;
-            var consumed: u32 = 0;
-            var prompt_state = ColorState{};
-            processContent(raw[0 .. split + 1], &proc_chars, &proc_colors, &proc_bolds, &proc_len, &consumed, &prompt_state);
-            addScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len], proc_bolds[0..proc_len]);
+// Erase from the cursor to the end of the screen (current row tail + rows below).
+fn eraseToEos() void {
+    eraseToEol();
+    var r = cursor_row + 1;
+    while (r < num_screen_lines) : (r += 1) clearRow(r);
+    num_screen_lines = cursor_row + 1;
+}
 
-            // Parse content after ']' to get actual '>' color
-            var gt_color: Color = .default;
-            var gt_bold: bool = false;
-            if (split + 1 < raw.len) {
-                var gt_chars: [N_COLS]u8 = undefined;
-                var gt_colors: [N_COLS]Color = undefined;
-                var gt_bolds: [N_COLS]bool = undefined;
-                var gt_len: u32 = 0;
-                var gt_consumed: u32 = 0;
-                var gt_state = ColorState{};
-                processContent(raw[split + 1 ..], &gt_chars, &gt_colors, &gt_bolds, &gt_len, &gt_consumed, &gt_state);
-                if (gt_len > 0) gt_color = gt_colors[0];
-                if (gt_len > 0) gt_bold = gt_bolds[0];
+// Write one glyph at the cursor and advance, wrapping at the right margin.
+fn putGlyph(c: u8) void {
+    if (cursor_col >= N_COLS) cursorNewline();
+    if (cursor_row + 1 > num_screen_lines) num_screen_lines = cursor_row + 1;
+    screen_lines[cursor_row][cursor_col] = c;
+    screen_line_colors[cursor_row][cursor_col] = term_color;
+    screen_line_bold[cursor_row][cursor_col] = term_bold;
+    if (cursor_col + 1 > screen_line_lengths[cursor_row])
+        screen_line_lengths[cursor_row] = cursor_col + 1;
+    // Note: age is NOT reset here. The fade-in is triggered only when a line
+    // scrolls in (see scrollUp), so in-place redraws (zig progress, the
+    // countdown) update without re-fading — no flicker.
+    cursor_col += 1;
+}
+
+// Feed the content bytes of one ts-line through the terminal state machine.
+// The inter-line break (the \n separating ts-lines) is applied by the caller
+// via the lazy-break logic in processTsLine; this handles everything within.
+fn feedContent(raw: []const u8) void {
+    var i: usize = 0;
+    while (i < raw.len) {
+        const c = raw[i];
+        if (c == 0x1b) {
+            if (i + 1 >= raw.len) {
+                i += 1;
+                continue;
             }
-            const prompt_line_chars: [2]u8 = .{ '>', ' ' };
-            const prompt_line_colors: [2]Color = .{ gt_color, .default };
-            const prompt_line_bolds: [2]bool = .{ gt_bold, false };
-            addScreenLine(&prompt_line_chars, &prompt_line_colors, &prompt_line_bolds);
+            switch (raw[i + 1]) {
+                '[' => { // CSI: scan to final byte (0x40-0x7E)
+                    i += 2;
+                    const seq_start = i;
+                    while (i < raw.len) {
+                        const sc = raw[i];
+                        if (sc >= 0x40 and sc <= 0x7E) {
+                            handleCsi(sc, raw[seq_start..i]);
+                            i += 1;
+                            break;
+                        }
+                        i += 1;
+                    }
+                },
+                ']' => { // OSC: skip to BEL or ST
+                    i += 2;
+                    while (i < raw.len) {
+                        if (raw[i] == 0x07) {
+                            i += 1;
+                            break;
+                        } else if (raw[i] == 0x1b and i + 1 < raw.len and raw[i + 1] == '\\') {
+                            i += 2;
+                            break;
+                        }
+                        i += 1;
+                    }
+                },
+                'P' => { // DCS: skip to ST
+                    i += 2;
+                    while (i < raw.len) {
+                        if (raw[i] == 0x1b and i + 1 < raw.len and raw[i + 1] == '\\') {
+                            i += 2;
+                            break;
+                        }
+                        i += 1;
+                    }
+                },
+                'M' => { // reverse index: cursor up one row
+                    cursorUp();
+                    i += 2;
+                },
+                '(' => { // designate G0 charset: ESC ( <set>  ('0' = DEC graphics)
+                    if (i + 2 < raw.len) {
+                        charset_dec = (raw[i + 2] == '0');
+                        i += 3;
+                    } else i += 2;
+                },
+                else => i += 2, // unknown escape: skip ESC + next byte
+            }
+        } else if (c == '\r') {
+            cursorCr();
+            i += 1;
+        } else if (c == '\n') {
+            cursorNewline();
+            i += 1;
+        } else if (c < 32) {
+            i += 1; // other control chars ignored
+        } else {
+            putGlyph(if (charset_dec) decMap(c) else c);
+            i += 1;
+        }
+    }
+}
 
+// Copy the work grid to the display grid (a completed frame becomes visible).
+fn present() void {
+    disp_num = num_screen_lines;
+    disp_cursor_row = cursor_row;
+    disp_cursor_col = cursor_col;
+    for (0..num_screen_lines) |i| {
+        @memcpy(&disp_lines[i], &screen_lines[i]);
+        @memcpy(&disp_colors[i], &screen_line_colors[i]);
+        @memcpy(&disp_bold[i], &screen_line_bold[i]);
+        disp_lengths[i] = screen_line_lengths[i];
+        disp_ages[i] = screen_line_ages[i];
+    }
+}
+
+// --- ts-line dispatch ---
+
+// Process one timestamped log line's content. Resolves the deferred line break
+// from the previous ts-line (real newline vs. a sentinel-marked carriage
+// return), handles the prompt/command merge, then feeds the bytes to the
+// terminal. A ts-line ending leaves `pending_newline` set so the *next* line
+// resolves the break — letting a leading sentinel turn it into a CR instead.
+fn processTsLine(content_in: []const u8) void {
+    var content = content_in;
+    const is_cr = content.len > 0 and content[0] == SENTINEL;
+    if (is_cr) content = content[1..];
+
+    // Command following a prompt: draw it on the prompt's "> " line so it looks
+    // typed, then advance one row so the blinking cursor rests at column 0 of a
+    // fresh bottom line while the command runs. Blank fillers are skipped
+    // without disturbing the cursor parked after "> ".
+    if (pending_command) {
+        if (content.len == 0) return;
+        feedContent(content);
+        cursorNewline();
+        pending_command = false;
+        pending_newline = false;
+        if (!sync_active) present();
+        return;
+    }
+
+    // Resolve the break deferred by the previous ts-line.
+    if (is_cr) {
+        cursorCr();
+    } else if (pending_newline) {
+        cursorNewline();
+    }
+    pending_newline = false;
+
+    // Prompt line "...[pris:/dir]> ": put the path on its own row and "> " on the
+    // next, then await the command (handled above on the following ts-line).
+    if (std.mem.indexOf(u8, content, "[pris:")) |pi| {
+        var split: usize = pi + 6;
+        while (split < content.len and content[split] != ']') : (split += 1) {}
+        if (split < content.len) {
+            feedContent(content[0 .. split + 1]); // "...[pris:/dir]"
+            cursorNewline();
+            feedContent(content[split + 1 ..]); // "> " (with its SGR color)
             pending_command = true;
+            if (!sync_active) present();
             return;
         }
     }
 
-    var proc_chars: [N_COLS]u8 = undefined;
-    var proc_colors: [N_COLS]Color = undefined;
-    var proc_bolds: [N_COLS]bool = undefined;
-    var proc_len: u32 = 0;
-
-    if (pending_command) {
-        if (raw.len == 0) return; // skip empty lines between prompt and command
-        var consumed: u32 = 0;
-        var cmd_state = ColorState{};
-        processContent(raw, &proc_chars, &proc_colors, &proc_bolds, &proc_len, &consumed, &cmd_state);
-        appendToLastScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len], proc_bolds[0..proc_len]);
-        pending_command = false;
-        return;
-    }
-
-    var offset: usize = 0;
-    var color_state = ColorState{};
-    while (offset < raw.len) {
-        var consumed: u32 = 0;
-        processContent(raw[offset..], &proc_chars, &proc_colors, &proc_bolds, &proc_len, &consumed, &color_state);
-        addScreenLine(proc_chars[0..proc_len], proc_colors[0..proc_len], proc_bolds[0..proc_len]);
-        if (consumed == 0) break;
-        offset += @as(usize, consumed);
-    }
+    feedContent(content);
+    pending_newline = true;
+    if (!sync_active) present();
 }
 
 // --- Timestamp / buffer parsing (unchanged) ---
@@ -768,41 +829,9 @@ fn processPendingLines(now_ms: u64) void {
             }
         }
 
-        // Display the line
+        // Feed the line through the terminal emulator.
         const content = chunk_buffers[read_buffer_idx][read_pos + parsed.content_start .. read_pos + parsed.content_end];
-        if (std.mem.startsWith(u8, content, "COMPILATION COMPLETE")) {
-            if (last_status_line_count > 0 and num_screen_lines >= last_status_line_count) {
-                num_screen_lines -= last_status_line_count;
-            }
-
-            const left = "COMPILATION COMPLETE";
-
-            // Find right portion after the whitespace gap
-            var right_start: usize = left.len;
-            while (right_start < content.len and content[right_start] == ' ') : (right_start += 1) {}
-            const right = std.mem.trimRight(u8, content[right_start..], " \r\n");
-
-            // Build a right-aligned N_COLS-wide screen line
-            var line_chars:  [N_COLS]u8    = [_]u8{' '}         ** N_COLS;
-            var line_colors: [N_COLS]Color = [_]Color{.default} ** N_COLS;
-            var line_bolds:  [N_COLS]bool  = [_]bool{false}     ** N_COLS;
-
-            const left_len = @min(left.len, N_COLS);
-            @memcpy(line_chars[0..left_len], left[0..left_len]);
-
-            if (right.len > 0 and right.len <= N_COLS) {
-                const right_pos = N_COLS - right.len;
-                @memcpy(line_chars[right_pos..], right);
-            }
-
-            addScreenLine(&line_chars, &line_colors, &line_bolds);
-            last_status_line_count = 1;
-        } else if (content.len == 0 and last_status_line_count > 0) {
-            // skip empty lines that follow a status line
-        } else {
-            last_status_line_count = 0;
-            addLineWithWrap(content);
-        }
+        processTsLine(content);
 
         read_pos += parsed.line_end;
     }
@@ -826,40 +855,52 @@ fn resetForReplay() void {
     }
 
     reached_end = false;
-    last_status_line_count = 0;
     run_start_epoch_ms = 0; // Will be set on next processFrame
     pending_command = false;
+    cursor_row = 0;
+    cursor_col = 0;
+    term_color = .default;
+    term_bold = false;
+    charset_dec = false;
+    pending_newline = false;
+    sync_active = false;
+    disp_num = 0;
+    disp_cursor_row = 0;
+    disp_cursor_col = 0;
 }
 
 fn renderScreen() void {
     // Clear text area
     fillRect(TEXT_X, TEXT_Y, CHAR_W * N_COLS + 1, LINE_H * N_ROWS, SCRN_RGB);
 
-    // Draw lines with per-character color
-    for (0..num_screen_lines) |i| {
-        const line_len = screen_line_lengths[i];
-        const age = screen_line_ages[i];
+    // Paint from the display grid — the last presented (complete) frame.
+    for (0..disp_num) |i| {
+        const line_len = disp_lengths[i];
+        const age = disp_ages[i];
         const y = TEXT_Y + @as(u32, @intCast(i)) * LINE_H;
 
         for (0..line_len) |j| {
-            const ci = @intFromEnum(screen_line_colors[i][j]);
+            const ci = @intFromEnum(disp_colors[i][j]);
             const rgb = if (age >= N_FADE_STEPS)
                 color_normal[ci]
             else
                 fade_colors[ci][age];
-            drawChar(screen_lines[i][j], TEXT_X + @as(u32, @intCast(j)) * CHAR_W, y, rgb, screen_line_bold[i][j]);
+            drawChar(disp_lines[i][j], TEXT_X + @as(u32, @intCast(j)) * CHAR_W, y, rgb, disp_bold[i][j]);
         }
+    }
 
+    // Advance the work grid's fade ages over time (fade only ever begins on scroll).
+    for (0..num_screen_lines) |i| {
         if (screen_line_ages[i] < N_FADE_STEPS) {
             screen_line_ages[i] += 1;
         }
     }
 
-    // Draw cursor
-    if (cursor_visible and num_screen_lines > 0) {
-        const last_idx = num_screen_lines - 1;
-        const cursor_x = TEXT_X + screen_line_lengths[last_idx] * CHAR_W;
-        const cursor_y = TEXT_Y + last_idx * LINE_H;
+    // Draw the cursor at the presented position.
+    if (cursor_visible) {
+        const col = @min(disp_cursor_col, N_COLS - 1);
+        const cursor_x = TEXT_X + col * CHAR_W;
+        const cursor_y = TEXT_Y + disp_cursor_row * LINE_H;
         for (0..font.FONT_H) |dy| {
             setPixel(cursor_x, cursor_y + @as(u32, @intCast(dy)), CURSOR_RGB);
         }
@@ -891,7 +932,17 @@ export fn init() void {
     clearScreen();
 
     num_screen_lines = 0;
-    last_status_line_count = 0;
+    cursor_row = 0;
+    cursor_col = 0;
+    term_color = .default;
+    term_bold = false;
+    charset_dec = false;
+    pending_newline = false;
+    pending_command = false;
+    sync_active = false;
+    disp_num = 0;
+    disp_cursor_row = 0;
+    disp_cursor_col = 0;
     for (0..MAX_SCREEN_LINES) |i| {
         screen_line_lengths[i] = 0;
         screen_line_ages[i] = N_FADE_STEPS;

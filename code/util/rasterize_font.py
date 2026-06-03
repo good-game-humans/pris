@@ -19,6 +19,53 @@ FONT_PATH = Path("/System/Library/Fonts/SFNSMono.ttf")
 FONT_SIZE = int(sys.argv[1]) if len(sys.argv) > 1 else 16
 CHARS = "".join(chr(c) for c in range(32, 127))  # ASCII 32-126
 
+# Procedural box-drawing glyphs, appended after the ASCII glyphs (indices 95+).
+# Each is built from arms reaching out from the cell center: every arm touches a
+# cell edge, so adjacent cells connect with no gaps (unlike the font's own box
+# glyphs, which tile at the font advance width, not our ink-derived cell width).
+# Order here defines the glyph index offset from 95; keep it in sync with the
+# DEC special-graphics mapping in pris-screen (wasm/src/main.zig).
+#   arms: subset of {'up','down','left','right'}
+BOX_GLYPHS = [
+    (0x2500, "horizontal",  {"left", "right"}),               # ─ q
+    (0x2502, "vertical",    {"up", "down"}),                  # │ x
+    (0x251C, "tee_right",   {"up", "down", "right"}),         # ├ t
+    (0x2514, "up_right",    {"up", "right"}),                 # └ m
+    (0x2510, "down_left",   {"down", "left"}),                # ┐ k
+    (0x250C, "down_right",  {"down", "right"}),               # ┌ l
+    (0x2518, "up_left",     {"up", "left"}),                  # ┘ j
+    (0x2524, "tee_left",    {"up", "down", "left"}),          # ┤ u
+    (0x252C, "tee_down",    {"down", "left", "right"}),       # ┬ w
+    (0x2534, "tee_up",      {"up", "left", "right"}),         # ┴ v
+    (0x253C, "cross",       {"up", "down", "left", "right"}), # ┼ n
+]
+
+
+def box_cell(arms, cell_width, cell_height, half_w):
+    """Anti-aliased box glyph. Each arm reaches a cell edge so adjacent cells
+    tile. Lines are ~2*half_w px wide with sub-pixel coverage, to match the
+    font's anti-aliased stroke weight rather than the heavier solid rules."""
+    px = [0] * (cell_width * cell_height)
+    vc = cell_width / 2.0   # vertical rule centered horizontally
+    hc = cell_height / 2.0  # horizontal rule centered vertically
+
+    def cov(i, center):  # coverage of pixel [i, i+1] by [center-half_w, center+half_w]
+        lo = max(float(i), center - half_w)
+        hi = min(float(i) + 1.0, center + half_w)
+        return hi - lo if hi > lo else 0.0
+
+    for y in range(cell_height):
+        for x in range(cell_width):
+            a = 0.0
+            cx = cov(x, vc)  # coverage across the vertical rule
+            cy = cov(y, hc)  # coverage across the horizontal rule
+            if "up" in arms and y <= hc:    a = max(a, cx)  # top edge -> center
+            if "down" in arms and y >= hc:  a = max(a, cx)  # center -> bottom edge
+            if "left" in arms and x <= vc:  a = max(a, cy)  # left edge -> center
+            if "right" in arms and x >= vc: a = max(a, cy)  # center -> right edge
+            px[y * cell_width + x] = round(a * 255)
+    return px
+
 
 def measure_font(font):
     metrics = []
@@ -28,8 +75,9 @@ def measure_font(font):
     return metrics
 
 
-def render_array(font, array_name, cell_width, cell_height, y_offset):
-    print(f"pub const {array_name}: [{len(CHARS)}][{cell_height}][{cell_width}]u8 = .{{")
+def render_array(font, array_name, cell_width, cell_height, y_offset, line_hw):
+    total = len(CHARS) + len(BOX_GLYPHS)
+    print(f"pub const {array_name}: [{total}][{cell_height}][{cell_width}]u8 = .{{")
     for char in CHARS:
         img = Image.new('L', (cell_width, cell_height), 0)
         draw = ImageDraw.Draw(img)
@@ -45,6 +93,17 @@ def render_array(font, array_name, cell_width, cell_height, y_offset):
             char_display = "\\'"
 
         print(f"    // '{char_display}' (ASCII {ord(char)})")
+        print("    .{")
+        for row in range(cell_height):
+            row_data = pixels[row * cell_width:(row + 1) * cell_width]
+            row_str = ", ".join(f"{p:3}" for p in row_data)
+            print(f"        .{{ {row_str} }},")
+        print("    },")
+
+    # Procedural box-drawing glyphs (indices 95+), shared across regular/bold.
+    for offset, (codepoint, name, arms) in enumerate(BOX_GLYPHS):
+        pixels = box_cell(arms, cell_width, cell_height, line_hw)
+        print(f"    // U+{codepoint:04X} {name} (index {len(CHARS) + offset})")
         print("    .{")
         for row in range(cell_height):
             row_data = pixels[row * cell_width:(row + 1) * cell_width]
@@ -75,18 +134,20 @@ def main():
     cell_width  = max_width + 2
     y_offset    = max_ascent + 2        # 2px top padding
     cell_height = y_offset + max_descent + 2  # 2px bottom padding
+    line_hw     = FONT_SIZE / 22.0  # box-rule half-width (~1.3px wide at 16pt)
 
+    total = len(CHARS) + len(BOX_GLYPHS)
     print(f"// Font: {FONT_PATH.stem} {FONT_SIZE}pt")
     print(f"// Cell size: {cell_width}x{cell_height}")
-    print(f"// Characters: ASCII 32-126 ({len(CHARS)} glyphs)")
+    print(f"// Characters: ASCII 32-126 + {len(BOX_GLYPHS)} box-drawing ({total} glyphs)")
     print()
     print(f"pub const FONT_W: u32 = {cell_width};")
     print(f"pub const FONT_H: u32 = {cell_height};")
     print()
-    print(f"// Grayscale bitmap data: {len(CHARS)} chars x {cell_width} x {cell_height} bytes")
-    render_array(font_regular, "font_data",      cell_width, cell_height, y_offset)
+    print(f"// Grayscale bitmap data: {total} chars x {cell_width} x {cell_height} bytes")
+    render_array(font_regular, "font_data",      cell_width, cell_height, y_offset, line_hw)
     print()
-    render_array(font_bold,    "font_data_bold", cell_width, cell_height, y_offset)
+    render_array(font_bold,    "font_data_bold", cell_width, cell_height, y_offset, line_hw)
 
 
 if __name__ == "__main__":

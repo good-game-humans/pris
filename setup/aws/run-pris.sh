@@ -7,6 +7,7 @@ PRIS_DIR="$HOME/pris"
 LOG_FILE="$PRIS_DIR/run/pris.log"
 CHUNKS_DIR="/var/www/html/pris/data" # Must match pris-screen DATA_PATH
 CHUNK_WRITER="$PRIS_DIR/bin/pris-chunk-writer"
+CRLF_FILTER="$PRIS_DIR/bin/pris-crlf-filter"
 BOOT_DIR="$PRIS_DIR/setup/aws/pris-boot"
 STOP_FILE="$PRIS_DIR/run/stop"
 CONTINUE_FROM_PREVIOUS_FILE="$PRIS_DIR/run/continue-from-previous"
@@ -75,7 +76,7 @@ while true; do
         -nic user,hostfwd=tcp::2222-:22 \
         -serial stdio \
         -display none \
-        2>&1 | stdbuf -oL tr '\r' '\n=STRIP=\n' | sed --unbuffered 's/\x1b\[K//g; /^=STRIP=$/d' | ts '[pris %.s]' | tee "$LOG_FILE"
+        2>&1 | "$CRLF_FILTER" | ts '[pris %.s]' | tee "$LOG_FILE"
 
     # Signal chunk writer to flush and exit
     echo "-=END=-" >> "$LOG_FILE"
