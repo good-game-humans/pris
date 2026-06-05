@@ -25,6 +25,9 @@ interface PrisScreenWasm {
   getScreenWidth(): number;
   getScreenHeight(): number;
   getMaxChunkSize(): number;
+  getKeyframeBufferPtr(): number;
+  getKeyframeMaxBytes(): number;
+  loadKeyframe(len: number, kfMs: bigint): void;
   hadUnknownColor(): boolean;
   getVersion(): number;
 }
@@ -58,8 +61,7 @@ async function pollManifest(): Promise<void> {
         BigInt(m.startTime + (m.mode === 'realtime' ? REALTIME_DELAY_MS : 0))
       );
       if (m.mode === 'realtime') {
-        const targetTimeSec = (Date.now() - REALTIME_DELAY_MS) / 1000;
-        currentChunk = await findStartChunk(targetTimeSec);
+        currentChunk = await seekRealtime();
       }
     }
   } catch { /* ignore */ }
@@ -67,13 +69,16 @@ async function pollManifest(): Promise<void> {
 
 async function findStartChunk(targetTimeSec: number): Promise<number> {
   try {
-    const text = await fetch(`${DATA_PATH}/chunk-times.txt`, { cache: 'no-store' }).then(r => r.text());
+    const resp = await fetch(`${DATA_PATH}/chunk-times.txt`, { cache: 'no-store' });
+    if (!resp.ok) return 0; // not written yet — don't parse the 404 page
+    const text = await resp.text();
     const entries = text.trim().split('\n')
       .filter(line => line.length > 0)
       .map(line => {
         const comma = line.indexOf(',');
         return { chunk: parseInt(line.slice(0, comma)), ts: parseFloat(line.slice(comma + 1)) };
-      });
+      })
+      .filter(e => Number.isFinite(e.chunk) && Number.isFinite(e.ts));
     if (entries.length === 0) return 0;
     let lo = 0, hi = entries.length - 1;
     while (lo < hi) {
@@ -84,6 +89,50 @@ async function findStartChunk(targetTimeSec: number): Promise<number> {
   } catch {
     return 0;
   }
+}
+
+function keyframeFilename(id: number): string {
+  return `${DATA_PATH}/keyframe-${id.toString().padStart(8, '0')}.bin`;
+}
+
+// Prime the screen from the latest keyframe at or before targetTimeSec, so a
+// fresh connect shows a full screen immediately. Returns the keyframe's stream
+// time (seconds) if one was loaded, else null.
+async function primeFromKeyframe(targetTimeSec: number): Promise<number | null> {
+  if (!wasm || !wasmMemory) return null;
+  try {
+    const resp = await fetch(`${DATA_PATH}/keyframes.txt`, { cache: 'no-store' });
+    if (!resp.ok) return null;
+    const entries = (await resp.text()).trim().split('\n')
+      .filter(l => l.length > 0)
+      .map(l => {
+        const comma = l.indexOf(',');
+        return { id: parseInt(l.slice(0, comma)), ts: parseFloat(l.slice(comma + 1)) };
+      });
+    let best: { id: number; ts: number } | null = null;
+    for (const e of entries) {
+      if (e.ts <= targetTimeSec) best = e; else break; // entries are time-ordered
+    }
+    if (!best) return null;
+    const kfResp = await fetch(keyframeFilename(best.id), { cache: 'no-store' });
+    if (!kfResp.ok) return null;
+    const bytes = new Uint8Array(await kfResp.arrayBuffer());
+    const len = Math.min(bytes.length, wasm.getKeyframeMaxBytes());
+    wasmMemory.set(bytes.subarray(0, len), wasm.getKeyframeBufferPtr());
+    wasm.loadKeyframe(len, BigInt(Math.round(best.ts * 1000)));
+    return best.ts;
+  } catch {
+    return null;
+  }
+}
+
+// Realtime connect: prime from a keyframe if available and replay the delta
+// forward from it (the WASM skips lines already in the keyframe); otherwise
+// start at the 5s-delayed point.
+async function seekRealtime(): Promise<number> {
+  const targetTimeSec = (Date.now() - REALTIME_DELAY_MS) / 1000;
+  const kfTs = await primeFromKeyframe(targetTimeSec);
+  return await findStartChunk(kfTs ?? targetTimeSec);
 }
 
 async function loadWasm(src: string): Promise<PrisScreenWasm> {
@@ -177,6 +226,9 @@ async function init(): Promise<void> {
   // Initialize WASM
   wasm.init();
 
+  // Memory view — needed by the keyframe prime during the realtime seek below.
+  wasmMemory = new Uint8Array(wasm.memory.buffer);
+
   // Fetch manifest
   let manifest: Manifest;
   try {
@@ -196,10 +248,9 @@ async function init(): Promise<void> {
     BigInt(manifest.startTime + (manifest.mode === 'realtime' ? REALTIME_DELAY_MS : 0))
   );
 
-  // In realtime mode, seek to the chunk closest to now - REALTIME_DELAY_MS
+  // In realtime mode, prime from a keyframe (if any) and seek the chunk stream.
   if (manifest.mode === 'realtime') {
-    const targetTimeSec = (Date.now() - REALTIME_DELAY_MS) / 1000;
-    currentChunk = await findStartChunk(targetTimeSec);
+    currentChunk = await seekRealtime();
     console.log('Starting from chunk', currentChunk);
   }
 
@@ -236,7 +287,6 @@ async function init(): Promise<void> {
   const ptr = wasm.getPixelBuffer();
   const size = width * height * 4;
   wasmPixels = new Uint8ClampedArray(wasm.memory.buffer, ptr, size);
-  wasmMemory = new Uint8Array(wasm.memory.buffer);
   imageData = ctx.createImageData(width, height);
 
   // Poll manifest for new runs

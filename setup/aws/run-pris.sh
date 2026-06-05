@@ -29,11 +29,13 @@ while true; do
     # Rotate log
     [ -f "$LOG_FILE" ] && mv "$LOG_FILE" "${LOG_FILE}.1"
 
-    # Clear chunk files, manifest, and chunk-writer state
+    # Clear chunk files, keyframes, manifest, and chunk-writer state
     mkdir -p "$CHUNKS_DIR"
     find "$CHUNKS_DIR" -maxdepth 1 -name 'pris-lines-*.txt' -delete
+    find "$CHUNKS_DIR" -maxdepth 1 -name 'keyframe-*.bin' -delete
     rm -f "$CHUNKS_DIR/pris-chunk-writer.state" \
           "$CHUNKS_DIR/chunk-times.txt" \
+          "$CHUNKS_DIR/keyframes.txt" \
           "$CHUNKS_DIR/manifest.json"
 
     if [ ! -f "$CONTINUE_FROM_PREVIOUS_FILE" ]; then

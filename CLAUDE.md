@@ -14,14 +14,19 @@ QEMU VM (LFS build)
                           ↓
                  ts → pris.log      (timestamps each line)
                           ↓
-                 pris-chunk-writer  (Zig, static binary)
+                 pris-chunk-writer  (Zig: chunks + periodic screen keyframes)
                           ↓
-              pris-lines/pris-lines-NNNNNN.txt
-              pris-lines/manifest.json
+              data/pris-lines-NNNNNNNN.txt   (line chunks) + chunk-times.txt
+              data/keyframe-NNNNNNNN.bin     (screen snapshots) + keyframes.txt
+              data/manifest.json
                           ↓
               pris-screen (browser)
               ├─ main.ts            (TypeScript)
               └─ pris-screen.wasm   (Zig → WASM, terminal emulator)
+
+  terminal.zig — the cursor/grid terminal core (ANSI parsing, the screen
+  grid, keyframe serialize/load). Shared by the WASM renderer and
+  pris-chunk-writer's keyframe writer so both produce identical state.
 ```
 
 ## Components
@@ -41,13 +46,20 @@ and contains the scripts and `markers/` directory.
 
 ### `code/pris-chunk-writer/`
 Zig executable (`src/main.zig`) that tails the QEMU log and writes numbered
-chunk files (`pris-lines-NNNNNN.txt`) into a data directory. Writes
-`-=END=-` sentinel on shutdown. Build with `zig build`.
+chunk files (`pris-lines-NNNNNNNN.txt`) + `chunk-times.txt` into a data
+directory. Writes `-=END=-` sentinel on shutdown.
 
-Cross-compile for Linux (x86_64) from Mac:
+It also feeds every line through the shared `terminal.zig` core and writes a
+**screen keyframe** every 5s of stream time (`keyframe-NNNNNNNN.bin` + a
+`keyframes.txt` index, pruned to the last 12), so a fresh browser connection
+can prime a full screen instead of starting blank. File I/O uses raw
+`std.os.linux` syscalls (stable across the zig 0.16 `std.Io` rework).
+
+Cross-compile for Linux (x86_64) from Mac — `-Dcols`/`-Drows` must match the
+pris-screen build so keyframes are the right grid size:
 ```
 cd code/pris-chunk-writer
-zig build -Dtarget=x86_64-linux-musl
+zig build -Dtarget=x86_64-linux-musl -Dcols=92 -Drows=36
 ```
 Output: `zig-out/bin/pris-chunk-writer` — copy to `~/pris/bin/` on EC2.
 
@@ -70,14 +82,21 @@ Output: `zig-out/bin/pris-crlf-filter` — copy to `~/pris/bin/` on EC2.
 ### `code/pris-screen/`
 Browser-based terminal renderer.
 
-**WASM** (`wasm/src/main.zig`): Zig compiled to WASM. Parses ANSI escape
-codes, renders glyphs from embedded bitmap font (`font.zig`), writes RGBA
-pixels into a shared memory buffer. Build with `zig build -Dcols=92 -Drows=36 -Dfont-size=16` inside `wasm/`.
+**WASM** (`wasm/src/main.zig` + `wasm/src/terminal.zig`): Zig compiled to WASM.
+`terminal.zig` is the terminal core — interprets the control stream (`\r`,
+`\n`, `ESC M`, `ESC[J/K/G`, `ESC(0` DEC charset, the `0x01` CR sentinel) into a
+character grid, with a work grid plus a display grid that is only "presented"
+at completed frames (no flicker on in-place redraws). `main.zig` adds the
+rendering (glyphs from `font-{size}.zig`, RGBA pixels), the chunk ring buffer,
+timing, and the exports. Build with `zig build -Dcols=92 -Drows=36 -Dfont-size=16`
+inside `wasm/`.
 
 **TypeScript** (`ts/src/main.ts`): Fetches chunks from `./data/`, passes
 bytes to WASM, renders frames via `requestAnimationFrame`. In `realtime`
 mode, applies `REALTIME_DELAY_MS = 5000` so playback trails live output by
-5 seconds. Build with `npx tsc` inside `ts/`.
+5 seconds. On connect it primes the screen from the latest `keyframe-*.bin`
+≤ now−5s (`loadKeyframe`), then replays only the delta forward. Build with
+`npx tsc` inside `ts/`.
 
 Manifest format (`pris-lines/manifest.json`):
 ```json
@@ -90,12 +109,12 @@ line when `line_offset_ms <= Date.now() - run_start_epoch_ms`.
 
 Regenerate font data (run on Mac, requires Pillow):
 ```
-python3 code/util/rasterize_font.py > code/pris-screen/wasm/src/font.zig
+python3 code/util/rasterize_font.py 16 > code/pris-screen/wasm/src/font-16.zig
 ```
 
 ### `setup/aws/`
-- `run-pris.sh` — main loop: cleans chunks/markers, writes manifest, starts
-  chunk-writer, runs QEMU, signals END, repeats
+- `run-pris.sh` — main loop: cleans chunks/keyframes/markers, writes manifest,
+  starts chunk-writer, runs QEMU, signals END, repeats
 - `aws-qemu-setup.md` — full EC2 setup instructions
 - `pris.qcow2` — main LFS disk (~3 GB, not in git)
 - `pris-scripts.qcow2` — scripts + markers disk (100 MB ext4)
