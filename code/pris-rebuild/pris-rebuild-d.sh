@@ -1792,31 +1792,7 @@ if ! marker_exists "llvm" ; then
     cmd 'git clone --depth 1 --branch release/20.x https://github.com/llvm/llvm-project llvm-project-20'
     cmd 'cd llvm-project-20'
     cmd 'git checkout release/20.x'
-
-    # cmd 'wget https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/llvm-20.1.8.src.tar.xz'
-    # cmd 'echo "78040509eb91309b4ec2edfe12cd20d8 llvm-20.1.8.src.tar.xz" \
-    # | md5sum -c'
-    # cmd 'wget https://anduin.linuxfromscratch.org/BLFS/llvm/llvm-cmake-20.1.8.src.tar.xz'
-    # cmd 'echo "5bfb8f4b4a2b3ccffca0d2406e4cdcc6 llvm-cmake-20.1.8.src.tar.xz" \
-    # | md5sum -c'
-    # cmd 'wget https://anduin.linuxfromscratch.org/BLFS/llvm/llvm-third-party-20.1.8.src.tar.xz'
-    # cmd 'echo "2ffd8624b3cbddf55a4e74a7d8ea89fa llvm-third-party-20.1.8.src.tar.xz" \
-    # | md5sum -c'
-    # cmd 'wget https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/clang-20.1.8.src.tar.xz'
-    # cmd 'echo "62a0500bb932868061607cde0c01f584 clang-20.1.8.src.tar.xz" \
-    # | md5sum -c'
-    # cmd 'tar -xf llvm-20.1.8.src.tar.xz'
-    # cmd 'cd llvm-20.1.8.src'
-#     cmd "tar -xf ../llvm-cmake-20.1.8.src.tar.xz                              &&
-# tar -xf ../llvm-third-party-20.1.8.src.tar.xz                        &&
-# sed '/LLVM_COMMON_CMAKE_UTILS/s@../cmake@cmake-20.1.8.src@'          \\
-#     -i CMakeLists.txt                                                &&
-# sed '/LLVM_THIRD_PARTY_DIR/s@../third-party@third-party-20.1.8.src@' \\
-#     -i cmake/modules/HandleLLVMOptions.cmake"
-#     cmd 'tar -xf ../clang-20.1.8.src.tar.xz -C tools &&
-# mv tools/clang-20.1.8.src tools/clang'
     cmd $'grep -rl \'#!.*python\' | xargs sed -i \'1s/python$/python3/\''
-    cmd "sed 's/utility/tool/' -i utils/FileCheck/CMakeLists.txt"
     cmd 'mkdir -v build &&
 cd       build &&
 CC=gcc CXX=g++                             \

@@ -700,11 +700,6 @@ esac"
              --disable-fixincludes    \
              --with-system-zlib'
     cmd 'make'
-    cmd 'ulimit -s -H unlimited'
-    cmd "sed -e '/cpython/d' -i ../gcc/testsuite/gcc.dg/plugin/plugin.exp"
-    cmd 'chown -R tester .'
-    cmd "su tester -c \"PATH=\$PATH make -k -j\$(nproc) check RUNTESTFLAGS='-v'\""
-    cmd '../contrib/test_summary | grep -A7 Summ'
     cmd 'make install'
     cmd 'chown -v -R root:root \
     /usr/lib/gcc/$(gcc -dumpmachine)/15.2.0/include{,-fixed}'

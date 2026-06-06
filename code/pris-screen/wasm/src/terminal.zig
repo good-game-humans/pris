@@ -52,6 +52,11 @@ pub var term_bold: bool = false;
 pub var charset_dec: bool = false; // true while DEC special-graphics (ESC ( 0) active
 pub var pending_newline: bool = false; // a line break is deferred to the next ts-line
 
+// Set when scrollUp ran since the last present; present() then skips its
+// per-row change diff for that cycle (row indices shifted, and scrollUp has
+// already seeded the incoming line's fade age).
+pub var scrolled_since_present: bool = false;
+
 // Pending command: set when a "[pris:/dir]> " prompt line is seen; the next
 // ts-line is the command, drawn on the same line (after "> ") to look typed.
 pub var pending_command: bool = false;
@@ -248,6 +253,7 @@ fn scrollUp() void {
     }
     clearRow(MAX_SCREEN_LINES - 1);
     screen_line_ages[MAX_SCREEN_LINES - 1] = 0; // scrolled-in line fades in
+    scrolled_since_present = true;
 }
 
 fn cursorUp() void {
@@ -380,18 +386,39 @@ fn feedContent(raw: []const u8) void {
     }
 }
 
+// Does work row `i` differ from the last presented frame's row `i`?
+fn rowDiffers(i: u32) bool {
+    if (screen_line_lengths[i] != disp_lengths[i]) return true;
+    for (0..screen_line_lengths[i]) |j| {
+        if (screen_lines[i][j] != disp_lines[i][j] or
+            screen_line_colors[i][j] != disp_colors[i][j] or
+            screen_line_bold[i][j] != disp_bold[i][j]) return true;
+    }
+    return false;
+}
+
 // Copy the work grid to the display grid (a completed frame becomes visible).
+// A row that genuinely changed since the last presented frame (or is newly
+// added) restarts at the bright end of the fade — so in-place redraws fade like
+// fresh output, while identical redraws keep settling toward normal. The diff is
+// skipped on scroll cycles, where row indices shifted under scrollUp.
 fn present() void {
-    disp_num = num_screen_lines;
-    disp_cursor_row = cursor_row;
-    disp_cursor_col = cursor_col;
+    const prev_disp_num = disp_num;
     for (0..num_screen_lines) |i| {
+        if (!scrolled_since_present) {
+            const changed = i >= prev_disp_num or rowDiffers(@intCast(i));
+            if (changed) screen_line_ages[i] = 0;
+        }
         @memcpy(&disp_lines[i], &screen_lines[i]);
         @memcpy(&disp_colors[i], &screen_line_colors[i]);
         @memcpy(&disp_bold[i], &screen_line_bold[i]);
         disp_lengths[i] = screen_line_lengths[i];
         disp_ages[i] = screen_line_ages[i];
     }
+    disp_num = num_screen_lines;
+    disp_cursor_row = cursor_row;
+    disp_cursor_col = cursor_col;
+    scrolled_since_present = false;
 }
 
 // Process one timestamped log line's content. Resolves the deferred line break
@@ -458,6 +485,7 @@ pub fn reset() void {
     pending_newline = false;
     pending_command = false;
     sync_active = false;
+    scrolled_since_present = false;
     disp_num = 0;
     disp_cursor_row = 0;
     disp_cursor_col = 0;

@@ -460,7 +460,7 @@ fn renderScreen() void {
 
     // Draw the cursor at the presented position.
     if (cursor_visible) {
-        const col = @min(term.disp_cursor_col, N_COLS - 1);
+        const col = @min(term.disp_cursor_col, N_COLS);
         const cursor_x = TEXT_X + col * CHAR_W;
         const cursor_y = TEXT_Y + term.disp_cursor_row * LINE_H;
         for (0..font.FONT_H) |dy| {
@@ -595,5 +595,5 @@ export fn hadUnknownColor() bool {
 }
 
 export fn getVersion() u32 {
-    return 6;
+    return 7;
 }
