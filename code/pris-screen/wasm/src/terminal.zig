@@ -438,9 +438,16 @@ pub fn processTsLine(content_in: []const u8) void {
     if (pending_command) {
         if (content.len == 0) return;
         feedContent(content);
+        // A trailing backslash is a shell line-continuation: the command spans
+        // further ts-lines. Advance a row but stay in command mode so each
+        // continuation is drawn beneath, and only drop to the fresh blinking-
+        // cursor line once the final (non-continued) line arrives.
+        const continued = content[content.len - 1] == '\\';
         cursorNewline();
-        pending_command = false;
-        pending_newline = false;
+        if (!continued) {
+            pending_command = false;
+            pending_newline = false;
+        }
         if (!sync_active) present();
         return;
     }
@@ -573,5 +580,5 @@ pub fn loadKeyframe(bytes: []const u8) void {
     }
     cursor_col = 0;
     disp_cursor_row = cursor_row;
-    disp_cursor_col = 0;
+    disp_cursor_col = if (rows > 0) disp_lengths[rows - 1] else 0;
 }

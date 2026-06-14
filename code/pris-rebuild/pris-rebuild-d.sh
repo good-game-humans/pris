@@ -1279,11 +1279,9 @@ make'
 fi
 
 if ! marker_exists "zsh" ; then
-    cmd 'wget https://www.zsh.org/pub/zsh-5.9.tar.xz'
-    cmd 'echo "182e37ca3fe3fa6a44f69ad462c5c30e zsh-5.9.tar.xz" \
-    | md5sum -c'
-    cmd 'tar -xf zsh-5.9.tar.xz'
-    cmd 'cd zsh-5.9'
+    cmd 'wget https://www.zsh.org/pub/zsh-5.9.1.tar.xz'
+    cmd 'tar -xf zsh-5.9.1.tar.xz'
+    cmd 'cd zsh-5.9.1'
     cmd "sed -e 's/set_from_init_file/texinfo_&/' \\
     -i Doc/Makefile.in"
     cmd "sed -e 's/^main/int &/'      \\
@@ -1311,7 +1309,7 @@ install -v -m644 zsh.{html,txt} Etc/FAQ /usr/share/doc/zsh-5.9'
 /bin/zsh
 EOF'
     cmd 'cd /sources'
-    cmd 'rm -rf zsh-5.9'
+    cmd 'rm -rf zsh-5.9.1'
     place_marker "zsh"
 fi
 

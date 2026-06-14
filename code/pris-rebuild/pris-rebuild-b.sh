@@ -263,7 +263,7 @@ if ! marker_exists "tools-coreutils" ; then
     cmd 'mv -v $LFS/usr/bin/chroot              $LFS/usr/sbin'
     cmd 'mkdir -pv $LFS/usr/share/man/man8'
     cmd 'mv -v $LFS/usr/share/man/man1/chroot.1 $LFS/usr/share/man/man8/chroot.8'
-    cmd "sed -i 's/\"1\"/\"8\"/'                    \$LFS/usr/share/man/man8/chroot.8'"
+    cmd "sed -i 's/\"1\"/\"8\"/'                    \$LFS/usr/share/man/man8/chroot.8"
     cmd 'cd $LFS/sources'
     cmd 'rm -rf coreutils-9.7'
     place_marker "tools-coreutils"

@@ -1554,7 +1554,8 @@ if ! marker_exists "dl-sysvinit-patch" ; then
 fi
 
 if ! marker_exists "blfs-bootscripts" ; then
-    cmd 'wget https://anduin.linuxfromscratch.org/BLFS/blfs-bootscripts/blfs-bootscripts-20250225.tar.xz'
+    cmd 'wget -P $LFS/sources \
+    https://anduin.linuxfromscratch.org/BLFS/blfs-bootscripts/blfs-bootscripts-20250225.tar.xz'
     place_marker "blfs-bootscripts"
 fi
 

@@ -595,5 +595,5 @@ export fn hadUnknownColor() bool {
 }
 
 export fn getVersion() u32 {
-    return 7;
+    return 8;
 }
