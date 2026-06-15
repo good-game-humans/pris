@@ -145,7 +145,7 @@ fn flushChunk(output_dir: []const u8, buf: *std.ArrayList(u8), state: *State) !v
 
 // Serialize the current terminal screen and append it to the keyframe index,
 // pruning the oldest retained snapshot.
-fn writeKeyframe(output_dir: []const u8, id: u32, ts_str: []const u8, kf_buf: []u8) !void {
+fn writeKeyframe(output_dir: []const u8, id: u32, ts_str: []const u8, kf_buf: []u8, kf_max: u32) !void {
     const len = term.serializeKeyframe(kf_buf);
 
     var path_buf: [512]u8 = undefined;
@@ -170,9 +170,9 @@ fn writeKeyframe(output_dir: []const u8, id: u32, ts_str: []const u8, kf_buf: []
     }
 
     // Prune the snapshot that has fallen out of the retention window.
-    if (id >= KEYFRAME_KEEP) {
+    if (kf_max > 0 and id >= kf_max) {
         var del_buf: [512]u8 = undefined;
-        const del = std.fmt.bufPrintZ(&del_buf, "{s}/keyframe-{d:0>8}.bin", .{ output_dir, id - KEYFRAME_KEEP }) catch return;
+        const del = std.fmt.bufPrintZ(&del_buf, "{s}/keyframe-{d:0>8}.bin", .{ output_dir, id - kf_max }) catch return;
         _ = linux.unlink(del.ptr);
     }
 }
@@ -185,6 +185,8 @@ fn processLine(
     kf_id: *u32,
     last_kf_ts: *f64,
     kf_buf: []u8,
+    kf_interval_s: f64,
+    kf_max: u32,
 ) !void {
     if (std.mem.startsWith(u8, line, END_MARKER)) return;
 
@@ -204,10 +206,56 @@ fn processLine(
     term.processTsLine(line[i..]);
 
     const ts = std.fmt.parseFloat(f64, ts_str) catch return;
-    if (last_kf_ts.* == 0 or ts >= last_kf_ts.* + KEYFRAME_INTERVAL_S) {
-        try writeKeyframe(output_dir, kf_id.*, ts_str, kf_buf);
+    if (last_kf_ts.* == 0 or ts >= last_kf_ts.* + kf_interval_s) {
+        try writeKeyframe(output_dir, kf_id.*, ts_str, kf_buf, kf_max);
         last_kf_ts.* = ts;
         kf_id.* += 1;
+    }
+}
+
+fn runKeyframesOnly(
+    build_log: [:0]const u8,
+    output_dir: [:0]const u8,
+    kf_interval_s: f64,
+    kf_max: u32,
+) !void {
+    const alloc = std.heap.page_allocator;
+    var line_buf: std.ArrayList(u8) = .empty;
+    defer line_buf.deinit(alloc);
+    var kf_id: u32 = 0;
+    var last_kf_ts: f64 = 0;
+    var kf_buf: [term.KEYFRAME_MAX_BYTES]u8 = undefined;
+    var read_buf: [65536]u8 = undefined;
+    var offset: usize = 0;
+
+    while (true) {
+        const fd = openRead(build_log.ptr) catch {
+            sleepNs(POLL_NS);
+            continue;
+        };
+        _ = linux.lseek(fd, @intCast(offset), linux.SEEK.SET);
+        const rr = sysErr(linux.read(fd, &read_buf, read_buf.len));
+        _ = linux.close(fd);
+
+        if (rr <= 0) {
+            sleepNs(POLL_NS);
+            continue;
+        }
+        const n: usize = @intCast(rr);
+        offset += n;
+
+        try line_buf.appendSlice(alloc, read_buf[0..n]);
+        var ls: usize = 0;
+        while (std.mem.indexOfScalarPos(u8, line_buf.items, ls, '\n')) |nl| {
+            const line = line_buf.items[ls..nl];
+            if (std.mem.startsWith(u8, line, END_MARKER)) return;
+            try processLine(line, output_dir, &kf_id, &last_kf_ts, &kf_buf, kf_interval_s, kf_max);
+            ls = nl + 1;
+        }
+        if (ls > 0) {
+            std.mem.copyForwards(u8, line_buf.items, line_buf.items[ls..]);
+            line_buf.shrinkRetainingCapacity(line_buf.items.len - ls);
+        }
     }
 }
 
@@ -215,16 +263,42 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const alloc = std.heap.page_allocator;
 
     const argv = init.args.vector;
-    if (argv.len != 3) {
-        std.debug.print("usage: pris-chunk-writer <build_log> <output_dir>\n", .{});
+    if (argv.len < 3) {
+        std.debug.print(
+            "usage: pris-chunk-writer <build_log> <output_dir> [--kf-only] [--kf-interval=<s>] [--kf-max=<n>]\n",
+            .{},
+        );
         return error.InvalidArgs;
     }
 
     const build_log  = std.mem.span(argv[1]);
     const output_dir = std.mem.span(argv[2]);
 
+    var kf_interval_s: f64 = KEYFRAME_INTERVAL_S;
+    var kf_max: u32       = KEYFRAME_KEEP;
+    var kf_only: bool     = false;
+    for (argv[3..]) |arg| {
+        const a = std.mem.span(arg);
+        if (std.mem.eql(u8, a, "--kf-only")) {
+            kf_only = true;
+        } else if (std.mem.startsWith(u8, a, "--kf-interval=")) {
+            kf_interval_s = std.fmt.parseFloat(f64, a["--kf-interval=".len..]) catch kf_interval_s;
+        } else if (std.mem.startsWith(u8, a, "--kf-max=")) {
+            kf_max = std.fmt.parseInt(u32, a["--kf-max=".len..], 10) catch kf_max;
+        }
+    }
+
     // Initialize the shared terminal grid (the WASM does this via init()).
     term.reset();
+
+    if (kf_only) {
+        var idx_buf: [512]u8 = undefined;
+        const idx_path = try std.fmt.bufPrintZ(&idx_buf, "{s}/keyframes.txt", .{output_dir});
+        const fd = try openTrunc(idx_path.ptr);
+        _ = linux.close(fd);
+        try runKeyframesOnly(build_log, output_dir, kf_interval_s, kf_max);
+        return;
+    }
 
     var state = loadState(output_dir);
 
@@ -279,7 +353,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
         try line_buf.appendSlice(alloc, read_buf[0..n]);
         var ls: usize = 0;
         while (std.mem.indexOfScalarPos(u8, line_buf.items, ls, '\n')) |nl| {
-            try processLine(line_buf.items[ls..nl], output_dir, &kf_id, &last_kf_ts, &kf_buf);
+            try processLine(line_buf.items[ls..nl], output_dir, &kf_id, &last_kf_ts, &kf_buf, kf_interval_s, kf_max);
             ls = nl + 1;
         }
         if (ls > 0) {

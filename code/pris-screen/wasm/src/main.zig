@@ -382,10 +382,6 @@ fn processPendingLines(now_ms: u64) void {
         if (parsed.is_end_signal) {
             reached_end = true;
             read_pos += parsed.line_end;
-            if (manifest_duration_ms > 0) {
-                // Replay mode: reset for next loop
-                resetForReplay();
-            }
             break;
         }
 
@@ -425,6 +421,10 @@ fn resetForReplay() void {
     reached_end = false;
     run_start_epoch_ms = 0; // Will be set on next processFrame
     keyframe_ms = 0;
+}
+
+export fn resetReplay() void {
+    resetForReplay();
 }
 
 fn renderScreen() void {
@@ -530,7 +530,7 @@ export fn markBufferReady(index: u32, len: u32) void {
 }
 
 export fn needsBuffer() bool {
-    if (reached_end and manifest_duration_ms == 0) return false;
+    if (reached_end) return false;
     return buffer_states[write_buffer_idx] == .empty;
 }
 

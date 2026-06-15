@@ -1,5 +1,5 @@
 // Configuration
-const DATA_PATH = './data';
+let dataPath = './data';
 const POLL_INTERVAL_MS = 1000;
 const REALTIME_DELAY_MS = 5000;
 
@@ -30,6 +30,7 @@ interface PrisScreenWasm {
   loadKeyframe(len: number, kfMs: bigint): void;
   hadUnknownColor(): boolean;
   getVersion(): number;
+  resetReplay(): void;
 }
 
 let wasm: PrisScreenWasm | null = null;
@@ -43,11 +44,13 @@ let fetchingChunk = false;
 let reachedEnd = false;
 let nextFetchMs = 0;
 let knownStartTime = 0;
+let knownDuration = 0;
+let loopCheckPosMs = -1;
 
 async function pollManifest(): Promise<void> {
   try {
     const m: Manifest = await fetch(
-      `${DATA_PATH}/manifest.json`,
+      `${dataPath}/manifest.json`,
       { cache: 'no-store' }
     ).then(r => r.json());
     if (m.startTime !== knownStartTime) {
@@ -69,7 +72,7 @@ async function pollManifest(): Promise<void> {
 
 async function findStartChunk(targetTimeSec: number): Promise<number> {
   try {
-    const resp = await fetch(`${DATA_PATH}/chunk-times.txt`, { cache: 'no-store' });
+    const resp = await fetch(`${dataPath}/chunk-times.txt`, { cache: 'no-store' });
     if (!resp.ok) return 0; // not written yet — don't parse the 404 page
     const text = await resp.text();
     const entries = text.trim().split('\n')
@@ -92,7 +95,7 @@ async function findStartChunk(targetTimeSec: number): Promise<number> {
 }
 
 function keyframeFilename(id: number): string {
-  return `${DATA_PATH}/keyframe-${id.toString().padStart(8, '0')}.bin`;
+  return `${dataPath}/keyframe-${id.toString().padStart(8, '0')}.bin`;
 }
 
 // Prime the screen from the latest keyframe at or before targetTimeSec, so a
@@ -101,7 +104,7 @@ function keyframeFilename(id: number): string {
 async function primeFromKeyframe(targetTimeSec: number): Promise<number | null> {
   if (!wasm || !wasmMemory) return null;
   try {
-    const resp = await fetch(`${DATA_PATH}/keyframes.txt`, { cache: 'no-store' });
+    const resp = await fetch(`${dataPath}/keyframes.txt`, { cache: 'no-store' });
     if (!resp.ok) return null;
     const entries = (await resp.text()).trim().split('\n')
       .filter(l => l.length > 0)
@@ -126,6 +129,24 @@ async function primeFromKeyframe(targetTimeSec: number): Promise<number | null> 
   }
 }
 
+async function seekReplay(durationMs: number): Promise<number> {
+  const posMs = (Date.now() - knownStartTime) % durationMs;
+  const targetSec = (knownStartTime + posMs) / 1000;
+  const kfTs = await primeFromKeyframe(targetSec);
+  return findStartChunk(kfTs ?? targetSec);
+}
+
+async function checkReplayLoop(): Promise<void> {
+  if (!wasm || !reachedEnd || knownDuration === 0) return;
+  const posMs = (Date.now() - knownStartTime) % knownDuration;
+  if (loopCheckPosMs >= 0 && posMs < loopCheckPosMs) {
+    wasm.resetReplay();
+    reachedEnd = false;
+    currentChunk = await seekReplay(knownDuration);
+  }
+  loopCheckPosMs = posMs;
+}
+
 // Realtime connect: prime from a keyframe if available and replay the delta
 // forward from it (the WASM skips lines already in the keyframe); otherwise
 // start at the 5s-delayed point.
@@ -143,7 +164,7 @@ async function loadWasm(src: string): Promise<PrisScreenWasm> {
 }
 
 function chunkFilename(num: number): string {
-  return `${DATA_PATH}/pris-lines-${num.toString().padStart(8, '0')}.txt`;
+  return `${dataPath}/pris-lines-${num.toString().padStart(8, '0')}.txt`;
 }
 
 async function fetchAndFillBuffer(): Promise<void> {
@@ -214,6 +235,7 @@ function renderFrame(): void {
 async function init(): Promise<void> {
   // Resolve WASM path from canvas data attribute
   const canvasEl = document.getElementById('terminal') as HTMLCanvasElement;
+  dataPath = canvasEl.dataset.dataPath ?? './data';
   const wasmSrc = canvasEl.dataset.wasmSrc ?? './wasm/zig-out/bin/pris-screen-120x40.wasm';
 
   // Load WASM
@@ -232,7 +254,7 @@ async function init(): Promise<void> {
   // Fetch manifest
   let manifest: Manifest;
   try {
-    manifest = await fetch(`${DATA_PATH}/manifest.json`, { cache: 'no-store' }).then(r => r.json());
+    manifest = await fetch(`${dataPath}/manifest.json`, { cache: 'no-store' }).then(r => r.json());
     console.log('Manifest loaded:', manifest);
   } catch {
     // Default to realtime mode with current time as start
@@ -241,17 +263,17 @@ async function init(): Promise<void> {
   }
   knownStartTime = manifest.startTime;
 
-  // Initialize timing
-  wasm.initTiming(
-    BigInt(manifest.startTime),
-    BigInt(manifest.duration ?? 0),
-    BigInt(manifest.startTime + (manifest.mode === 'realtime' ? REALTIME_DELAY_MS : 0))
-  );
-
-  // In realtime mode, prime from a keyframe (if any) and seek the chunk stream.
+  // Initialize timing and seek to the right position.
   if (manifest.mode === 'realtime') {
+    wasm.initTiming(BigInt(manifest.startTime), BigInt(0), BigInt(manifest.startTime + REALTIME_DELAY_MS));
     currentChunk = await seekRealtime();
     console.log('Starting from chunk', currentChunk);
+  } else {
+    knownDuration = manifest.duration ?? 0;
+    wasm.initTiming(BigInt(manifest.startTime), BigInt(knownDuration), BigInt(manifest.startTime));
+    currentChunk = await seekReplay(knownDuration);
+    console.log('Starting from chunk', currentChunk);
+    setInterval(checkReplayLoop, 1000);
   }
 
   // Set up canvas
