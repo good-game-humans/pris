@@ -24,20 +24,27 @@ CHARS = "".join(chr(c) for c in range(32, 127))  # ASCII 32-126
 # cell edge, so adjacent cells connect with no gaps (unlike the font's own box
 # glyphs, which tile at the font advance width, not our ink-derived cell width).
 # Order here defines the glyph index offset from 95; keep it in sync with the
-# DEC special-graphics mapping in pris-screen (wasm/src/main.zig).
+# DEC special-graphics mapping and the literal-UTF-8 box-codepoint mapping in
+# pris-screen (wasm/src/terminal.zig).
 #   arms: subset of {'up','down','left','right'}
+#   heavy: thicker stroke, for the heavy/light box-drawing codepoints emitted
+#   directly (as UTF-8) by tools like pip's progress bar, rather than via the
+#   DEC special-graphics charset.
 BOX_GLYPHS = [
-    (0x2500, "horizontal",  {"left", "right"}),               # ─ q
-    (0x2502, "vertical",    {"up", "down"}),                  # │ x
-    (0x251C, "tee_right",   {"up", "down", "right"}),         # ├ t
-    (0x2514, "up_right",    {"up", "right"}),                 # └ m
-    (0x2510, "down_left",   {"down", "left"}),                # ┐ k
-    (0x250C, "down_right",  {"down", "right"}),               # ┌ l
-    (0x2518, "up_left",     {"up", "left"}),                  # ┘ j
-    (0x2524, "tee_left",    {"up", "down", "left"}),          # ┤ u
-    (0x252C, "tee_down",    {"down", "left", "right"}),       # ┬ w
-    (0x2534, "tee_up",      {"up", "left", "right"}),         # ┴ v
-    (0x253C, "cross",       {"up", "down", "left", "right"}), # ┼ n
+    (0x2500, "horizontal",  {"left", "right"}, False),               # ─ q
+    (0x2502, "vertical",    {"up", "down"}, False),                  # │ x
+    (0x251C, "tee_right",   {"up", "down", "right"}, False),         # ├ t
+    (0x2514, "up_right",    {"up", "right"}, False),                 # └ m
+    (0x2510, "down_left",   {"down", "left"}, False),                # ┐ k
+    (0x250C, "down_right",  {"down", "right"}, False),               # ┌ l
+    (0x2518, "up_left",     {"up", "left"}, False),                  # ┘ j
+    (0x2524, "tee_left",    {"up", "down", "left"}, False),          # ┤ u
+    (0x252C, "tee_down",    {"down", "left", "right"}, False),       # ┬ w
+    (0x2534, "tee_up",      {"up", "left", "right"}, False),         # ┴ v
+    (0x253C, "cross",       {"up", "down", "left", "right"}, False), # ┼ n
+    (0x2501, "heavy_horizontal", {"left", "right"}, True),           # ━ pip bar fill
+    (0x257A, "heavy_right",      {"right"}, True),                   # ╺ pip bar edge
+    (0x2578, "heavy_left",       {"left"}, True),                    # ╸ pip bar edge
 ]
 
 
@@ -101,8 +108,8 @@ def render_array(font, array_name, cell_width, cell_height, y_offset, line_hw):
         print("    },")
 
     # Procedural box-drawing glyphs (indices 95+), shared across regular/bold.
-    for offset, (codepoint, name, arms) in enumerate(BOX_GLYPHS):
-        pixels = box_cell(arms, cell_width, cell_height, line_hw)
+    for offset, (codepoint, name, arms, heavy) in enumerate(BOX_GLYPHS):
+        pixels = box_cell(arms, cell_width, cell_height, line_hw * 2.0 if heavy else line_hw)
         print(f"    // U+{codepoint:04X} {name} (index {len(CHARS) + offset})")
         print("    .{")
         for row in range(cell_height):

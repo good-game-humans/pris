@@ -18,7 +18,7 @@ pub const SENTINEL: u8 = 0x01;
 // byte codes BOX_BASE..BOX_BASE+N_BOX_GLYPHS-1.
 pub const BOX_BASE: u8 = 0x80;
 pub const FIRST_BOX_GLYPH: usize = 95;
-pub const N_BOX_GLYPHS: usize = 11;
+pub const N_BOX_GLYPHS: usize = 14;
 
 // Color palette
 pub const Color = enum(u8) {
@@ -103,6 +103,44 @@ fn decMap(c: u8) u8 {
         'n' => BOX_BASE + 10, // ┼
         else => c, // space and others render as-is
     };
+}
+
+// Map a literal UTF-8 box-drawing codepoint to its box glyph code (order
+// matches BOX_GLYPHS in code/util/rasterize_font.py). Tools like pip emit
+// these directly as UTF-8 rather than via the DEC special-graphics charset.
+fn boxCodepoint(cp: u21) ?u8 {
+    return switch (cp) {
+        0x2500 => BOX_BASE + 0,  // ─
+        0x2502 => BOX_BASE + 1,  // │
+        0x251C => BOX_BASE + 2,  // ├
+        0x2514 => BOX_BASE + 3,  // └
+        0x2510 => BOX_BASE + 4,  // ┐
+        0x250C => BOX_BASE + 5,  // ┌
+        0x2518 => BOX_BASE + 6,  // ┘
+        0x2524 => BOX_BASE + 7,  // ┤
+        0x252C => BOX_BASE + 8,  // ┬
+        0x2534 => BOX_BASE + 9,  // ┴
+        0x253C => BOX_BASE + 10, // ┼
+        0x2501 => BOX_BASE + 11, // ━ pip bar fill
+        0x257A => BOX_BASE + 12, // ╺ pip bar edge
+        0x2578 => BOX_BASE + 13, // ╸ pip bar edge
+        else => null,
+    };
+}
+
+// Decode one UTF-8 sequence starting at raw[i]. Malformed or truncated
+// sequences decode as a single byte so the parser can't get stuck.
+fn utf8Decode(raw: []const u8, i: usize) struct { cp: u21, len: usize } {
+    const b0 = raw[i];
+    const len: usize = if (b0 & 0xE0 == 0xC0) 2 else if (b0 & 0xF0 == 0xE0) 3 else if (b0 & 0xF8 == 0xF0) 4 else 1;
+    if (len == 1 or i + len > raw.len) return .{ .cp = b0, .len = 1 };
+    var cp: u21 = b0 & (@as(u21, 0x7F) >> @intCast(len));
+    for (1..len) |k| {
+        const bk = raw[i + k];
+        if (bk & 0xC0 != 0x80) return .{ .cp = b0, .len = 1 }; // not a continuation byte
+        cp = (cp << 6) | (bk & 0x3F);
+    }
+    return .{ .cp = cp, .len = len };
 }
 
 // --- ANSI escape sequence parsing ---
@@ -379,9 +417,17 @@ fn feedContent(raw: []const u8) void {
             i += 1;
         } else if (c < 32) {
             i += 1; // other control chars ignored
-        } else {
+        } else if (c < 0x80) {
             putGlyph(if (charset_dec) decMap(c) else c);
             i += 1;
+        } else {
+            const dec = utf8Decode(raw, i);
+            i += dec.len;
+            switch (dec.cp) {
+                // Zero-width: variation selector, ZWJ, bidi controls — no cell.
+                0xFE0F, 0x200D, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E => {},
+                else => putGlyph(boxCodepoint(dec.cp) orelse ' '),
+            }
         }
     }
 }

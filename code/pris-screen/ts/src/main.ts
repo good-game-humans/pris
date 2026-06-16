@@ -270,10 +270,26 @@ async function init(): Promise<void> {
     console.log('Starting from chunk', currentChunk);
   } else {
     knownDuration = manifest.duration ?? 0;
-    wasm.initTiming(BigInt(manifest.startTime), BigInt(knownDuration), BigInt(manifest.startTime));
-    currentChunk = await seekReplay(knownDuration);
-    console.log('Starting from chunk', currentChunk);
-    setInterval(checkReplayLoop, 1000);
+    // Debug seek: ?t=<unix_seconds> jumps to a fixed stream time and plays
+    // forward from there (no loop wrap), for testing a specific point.
+    const seekParam = new URLSearchParams(location.search).get('t');
+    if (seekParam) {
+      const tMs = parseFloat(seekParam) * 1000;
+      // Epoch shift so run_elapsed lands at T's offset, then advances normally.
+      wasm.initTiming(
+        BigInt(manifest.startTime),
+        BigInt(knownDuration),
+        BigInt(Math.round(Date.now() - (tMs - manifest.startTime))),
+      );
+      const kfTs = await primeFromKeyframe(tMs / 1000);
+      currentChunk = await findStartChunk(kfTs ?? tMs / 1000);
+      console.log('Debug seek to', seekParam, '— starting from chunk', currentChunk);
+    } else {
+      wasm.initTiming(BigInt(manifest.startTime), BigInt(knownDuration), BigInt(manifest.startTime));
+      currentChunk = await seekReplay(knownDuration);
+      console.log('Starting from chunk', currentChunk);
+      setInterval(checkReplayLoop, 1000);
+    }
   }
 
   // Set up canvas
