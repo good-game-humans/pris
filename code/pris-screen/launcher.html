@@ -1,35 +1,52 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>pris — launcher</title>
-  <style>
-    html, body {
-      margin: 0;
-      background: #080e0f;
-      color: #cccccc;
-      font-family: sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      gap: 16px;
-    }
-    button {
-      background: #1a2528;
-      color: #cccccc;
-      border: 1px solid #23322d;
-      padding: 12px 32px;
-      font-family: sans-serif;
-      font-size: 14px;
-      cursor: pointer;
-      width: 200px;
-    }
-    button:hover { background: #aaaaaa; color: #111; }
-  </style>
-</head>
-<body>
-  <button onclick="window.open('index.html', '_blank', 'width=832,height=660')">open pris popup</button>
-</body>
+    <head>
+        <meta charset="UTF-8" />
+        <title>pris — launcher</title>
+        <style>
+            html,
+            body {
+                margin: 0;
+                background: #080e0f;
+                color: #cccccc;
+                font-family: sans-serif;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                gap: 16px;
+            }
+            button {
+                background: #1a2528;
+                color: #cccccc;
+                border: 1px solid #23322d;
+                padding: 12px 32px;
+                font-family: sans-serif;
+                font-size: 14px;
+                cursor: pointer;
+                width: 240px;
+            }
+            button:hover {
+                background: #aaaaaa;
+                color: #111;
+            }
+        </style>
+    </head>
+    <body>
+        <button
+            onclick="
+                window.open('launched.html', '_blank', 'width=876,height=912')
+            "
+        >
+            open pris popup
+        </button>
+        <button
+            onclick="
+                window.open('replay.html', '_blank', 'width=876,height=912')
+            "
+        >
+            open pris replay popup
+        </button>
+    </body>
 </html>
