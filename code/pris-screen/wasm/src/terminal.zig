@@ -552,40 +552,78 @@ pub fn reset() void {
 
 // --- Keyframe (de)serialization ---
 //
-// A compact dump of the display grid, used to prime the screen on a fresh
-// connect. Format:
-//   [num_rows: u8]
+// A compact dump of the full terminal state, used to prime the screen on a
+// fresh connect / replay seek. The client resumes feeding at the exact line
+// after the keyframe's timestamp, so the keyframe must reproduce the terminal
+// state forward play had at that point — not just the visible pixels. zig's
+// std.Progress redraws its tree cursor-addressed (ESC M up, ESC[J, redraw)
+// almost entirely inside a synchronized update, so the work grid and cursor
+// routinely differ from the last *presented* (display) frame mid-redraw;
+// dumping the display grid + a guessed cursor desynced the resume and doubled
+// the tree. So we dump the work grid plus the cursor and the cross-line flags.
+//
+// Format (5-byte header, then the rows):
+//   [cursor_row: u8] [cursor_col: u8] [flags: u8] [term_color: u8] [num_rows: u8]
 //   per row: [len: u8] then len × (char: u8, attr: u8)
-// where attr = color | (bold << 7). Tiny (a few KB) and re-rendered by the
-// client, so it adapts to the canvas/font — never pixels.
+// flags: bit0 pending_newline, bit1 charset_dec, bit2 sync_active,
+//        bit3 pending_command, bit4 term_bold
+// attr = color | (bold << 7). Tiny (a few KB) and re-rendered by the client,
+// so it adapts to the canvas/font — never pixels. Keyframes are regenerated
+// whenever this binary is (grid size already forces it), so there is no version
+// tag: a stale keyframe is never read against mismatched code.
 
-pub const KEYFRAME_MAX_BYTES: usize = 1 + MAX_SCREEN_LINES * (1 + N_COLS * 2);
+pub const KEYFRAME_MAX_BYTES: usize = 5 + MAX_SCREEN_LINES * (1 + N_COLS * 2);
 
-// Serialize the current display grid into `out`; returns the byte length.
+// Serialize the current terminal state (work grid + cursor + flags) into `out`;
+// returns the byte length.
 pub fn serializeKeyframe(out: []u8) usize {
     var i: usize = 0;
-    out[i] = @intCast(disp_num);
+    out[i] = @intCast(cursor_row);
     i += 1;
-    for (0..disp_num) |r| {
-        const len = disp_lengths[r];
+    out[i] = @intCast(@min(cursor_col, N_COLS));
+    i += 1;
+    var flags: u8 = 0;
+    if (pending_newline) flags |= 0x01;
+    if (charset_dec) flags |= 0x02;
+    if (sync_active) flags |= 0x04;
+    if (pending_command) flags |= 0x08;
+    if (term_bold) flags |= 0x10;
+    out[i] = flags;
+    i += 1;
+    out[i] = @intFromEnum(term_color);
+    i += 1;
+    out[i] = @intCast(num_screen_lines);
+    i += 1;
+    for (0..num_screen_lines) |r| {
+        const len = screen_line_lengths[r];
         out[i] = @intCast(len);
         i += 1;
         for (0..len) |c| {
-            out[i] = disp_lines[r][c];
-            out[i + 1] = @intFromEnum(disp_colors[r][c]) |
-                (if (disp_bold[r][c]) @as(u8, 0x80) else 0);
+            out[i] = screen_lines[r][c];
+            out[i + 1] = @intFromEnum(screen_line_colors[r][c]) |
+                (if (screen_line_bold[r][c]) @as(u8, 0x80) else 0);
             i += 2;
         }
     }
     return i;
 }
 
-// Populate both the work and display grids from a serialized keyframe, so the
-// screen renders immediately and trailing output appends cleanly below it.
+// Restore the full terminal state from a serialized keyframe. The grid is loaded
+// into both the work and display grids so the screen renders immediately, and the
+// cursor and cross-line flags are restored exactly so the resumed stream — which
+// may pick up mid-redraw — continues as forward play would.
 pub fn loadKeyframe(bytes: []const u8) void {
     reset();
-    if (bytes.len == 0) return;
+    if (bytes.len < 5) return;
     var i: usize = 0;
+    const c_row = bytes[i];
+    i += 1;
+    const c_col = bytes[i];
+    i += 1;
+    const flags = bytes[i];
+    i += 1;
+    const color_byte = bytes[i];
+    i += 1;
     const rows = @min(@as(u32, bytes[i]), MAX_SCREEN_LINES);
     i += 1;
     var r: u32 = 0;
@@ -614,17 +652,14 @@ pub fn loadKeyframe(bytes: []const u8) void {
     }
     num_screen_lines = rows;
     disp_num = rows;
-    // Park the cursor on the last loaded row with a pending newline, so the first
-    // trailing line scrolls onto a fresh (cleared) row rather than overwriting the
-    // keyframe's last line in place — which would leave the old line's tail behind.
-    if (rows > 0) {
-        cursor_row = rows - 1;
-        pending_newline = true;
-    } else {
-        cursor_row = 0;
-        pending_newline = false;
-    }
-    cursor_col = 0;
+    cursor_row = @min(@as(u32, c_row), MAX_SCREEN_LINES - 1);
+    cursor_col = @min(@as(u32, c_col), N_COLS);
+    pending_newline = (flags & 0x01) != 0;
+    charset_dec = (flags & 0x02) != 0;
+    sync_active = (flags & 0x04) != 0;
+    pending_command = (flags & 0x08) != 0;
+    term_bold = (flags & 0x10) != 0;
+    term_color = @enumFromInt(@min(color_byte, @as(u8, N_COLORS - 1)));
     disp_cursor_row = cursor_row;
-    disp_cursor_col = if (rows > 0) disp_lengths[rows - 1] else 0;
+    disp_cursor_col = cursor_col;
 }
