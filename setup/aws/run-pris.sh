@@ -69,7 +69,7 @@ while true; do
 
     # --- Run QEMU ---
     qemu-system-x86_64 \
-        -m 7G \
+        -m 3G \
         -smp 4 \
         -hda "$PRIS_DIR/setup/aws/pris-overlay.qcow2" \
         -hdb "$SCRIPTS_IMG" \
