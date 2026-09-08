@@ -14,12 +14,52 @@
                 overflow: hidden;
             }
             #screen {
+                position: relative;
                 background: #10181a;
                 flex: 5;
                 display: flex;
                 justify-content: center;
                 align-items: center;
                 min-height: 0;
+            }
+            #collapse-toggle {
+                position: absolute;
+                bottom: 10px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 46px;
+                height: 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0;
+                background: rgba(19, 169, 255, 0.12);
+                border: 1px solid #13a9ff;
+                border-radius: 5px;
+                color: #13a9ff;
+                cursor: pointer;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.3s ease;
+                z-index: 10;
+            }
+            #collapse-toggle:hover {
+                background: rgba(19, 169, 255, 0.28);
+            }
+            body.controls-visible #collapse-toggle {
+                opacity: 1;
+                pointer-events: auto;
+            }
+            #collapse-toggle svg {
+                width: 18px;
+                height: 18px;
+                transition: transform 0.25s ease;
+            }
+            body.collapsed #collapse-toggle svg {
+                transform: rotate(180deg);
+            }
+            body.collapsed #info {
+                display: none;
             }
             #terminal {
                 background: #1a2528;
@@ -52,6 +92,9 @@
                 #info {
                     display: none;
                 }
+                #collapse-toggle {
+                    display: none;
+                }
             }
         </style>
     </head>
@@ -62,6 +105,18 @@
                 data-wasm-src="./wasm/zig-out/bin/pris-screen-92x36.wasm"
                 data-data-path="./data-replay"
             ></canvas>
+            <button id="collapse-toggle" aria-label="Toggle info panel">
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <polyline points="6 9 12 15 18 9" />
+                </svg>
+            </button>
         </div>
         <div id="info">
             <h2>The life of American machines_</h2>
@@ -95,5 +150,48 @@
             </p>
         </div>
         <script type="module" src="./ts/dist/main.js"></script>
+        <script>
+            (function () {
+                const body = document.body;
+                const toggle = document.getElementById("collapse-toggle");
+                const info = document.getElementById("info");
+
+                // Reveal the toggle on mouse movement; fade it back out after a
+                // short idle, like a video player's controls.
+                const IDLE_MS = 2500;
+                let idleTimer;
+                function showControls() {
+                    body.classList.add("controls-visible");
+                    clearTimeout(idleTimer);
+                    idleTimer = setTimeout(function () {
+                        body.classList.remove("controls-visible");
+                    }, IDLE_MS);
+                }
+                window.addEventListener("mousemove", showControls);
+                showControls();
+
+                // Collapse hides the text (same as the wide-viewport media
+                // query) and, in a popup, shrinks the window by the panel's
+                // height so the page gets less vertical rather than just
+                // letterboxing a bigger terminal. A synthetic resize re-runs
+                // the canvas fit in main.js.
+                let infoHeight = 0;
+                toggle.addEventListener("click", function () {
+                    const collapsing = !body.classList.contains("collapsed");
+                    if (collapsing) {
+                        infoHeight = info.offsetHeight;
+                        body.classList.add("collapsed");
+                    } else {
+                        body.classList.remove("collapsed");
+                    }
+                    try {
+                        window.resizeBy(0, collapsing ? -infoHeight : infoHeight);
+                    } catch (e) {
+                        /* not a script-opened popup; collapse still applies */
+                    }
+                    window.dispatchEvent(new Event("resize"));
+                });
+            })();
+        </script>
     </body>
 </html>
